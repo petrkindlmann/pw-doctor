@@ -5,30 +5,33 @@ CLI tool + SaaS that detects broken Playwright selectors by running tests to fai
 captures live DOM at the exact failure point, proposes safe fixes via AST patching.
 
 ## Project Status
-Phase 2 COMPLETE. 72 tests passing, clean build, CLI functional with heal loop.
-- `pw-doctor init` — auto-detects project, creates config, scans selectors
+Phase 3 COMPLETE. 234 tests passing, clean build, full AI repair pipeline operational.
+- `pw-doctor init` — auto-detects project, creates config, suggests reporter setup, detects AI keys
 - `pw-doctor check` — extracts selectors via AST, scores fragility, reports
-- `pw-doctor heal` — runs tests, detects broken selectors, proposes/applies fixes (--dry-run default, --apply to patch)
-- PRD_FINAL.md is the single source of truth
-- docs/plans/2026-03-08-security-audit.md has 58 security controls
-- docs/plans/2026-03-09-phase1-cli-foundation.md has the Phase 1 implementation plan
-- docs/plans/2026-03-09-phase2-heal-loop.md has the Phase 2 implementation plan
-- archive/ has superseded planning docs — do not use for decisions
-- Note: heal command passes empty HTML to repair pipeline (no live DOM capture yet) — strategies only work in tests with fixture HTML
+- `pw-doctor heal` — runs tests, captures DOM, redacts, AI+heuristic repair, AST patch, verify
+  - Flags: --dry-run (default), --apply, --interactive, --watch, --ci, --no-ai, --min-confidence, --max-files
+- `pw-doctor credentials check` — verifies ANTHROPIC_API_KEY / OPENAI_API_KEY env vars
+- AI providers: Anthropic (claude-sonnet-4-20250514) + OpenAI (gpt-4o) via adapter interface
+- DOM capture: Playwright fixture + reporter writes .pw-doctor/captures/ on test failure
+- DOM redaction: moderate/strict/minimal presets, scrubs emails/JWTs/API keys/UUIDs
+- Token budget enforcement: maxCallsPerRun (20), tokenBudgetPerRun (50000)
+- Plans: docs/plans/2026-03-09-phase3-*.md
 
 ## Key Architecture Decisions
 - Heal loop: run actual test → catch failure → capture DOM → repair → verify (NOT scan live sites independently)
 - AST patching via recast + @babel/parser (NEVER regex for selector replacement)
-- Heuristics first (free, <100ms), AI fallback second (BYOK Anthropic, ~2s)
+- Heuristics first (free, <100ms), AI fallback second (BYOK Anthropic/OpenAI, ~2s)
 - Default --dry-run — never auto-apply without explicit --apply flag
 - Config: cosmiconfig with JSON/YAML only — no TypeScript/JS eval (security C1.1)
-- Credentials stored in ~/.pw-doctor/ (HOME), never in project directory
+- Credentials: env vars only (ANTHROPIC_API_KEY, OPENAI_API_KEY) — no disk storage
+- AI responses validated with Zod (ai-response-schema.ts) before use
 
 ## Tech Stack
 - CLI: commander, @clack/prompts, chalk, ora, cosmiconfig, zod
 - AST: recast + @babel/parser (preserves formatting)
-- DOM: cheerio + fuse.js (fuzzy matching)
-- AI: @anthropic-ai/sdk (BYOK only)
+- DOM: cheerio (parsing + redaction)
+- AI: @anthropic-ai/sdk + openai (BYOK, provider-agnostic adapter)
+- Watch: chokidar (file watcher for --watch mode)
 - Web (V2): Next.js 15, Tailwind 4, Radix UI, Supabase, Stripe
 - Deploy: Cloudflare Workers via OpenNext (see global CLAUDE.md for deploy commands)
 - Monorepo: Turborepo (packages: cli, web, shared)
@@ -45,19 +48,22 @@ Phase 2 COMPLETE. 72 tests passing, clean build, CLI functional with heal loop.
 ## Repo Structure
 ```
 packages/cli/src/bin/         — CLI entry point (pw-doctor.ts)
-packages/cli/src/commands/    — init.ts, check.ts, heal.ts
-packages/cli/src/core/        — selector-extractor.ts, fragility-scorer.ts, ast-patcher.ts, test-runner.ts, dom-analyzer.ts
+packages/cli/src/commands/    — init.ts, check.ts, heal.ts, credentials.ts, watch.ts
+packages/cli/src/core/        — selector-extractor.ts, fragility-scorer.ts, ast-patcher.ts, test-runner.ts, dom-analyzer.ts, dom-redactor.ts
 packages/cli/src/repair/      — text-match.ts, attribute-match.ts, candidate-ranker.ts, backup.ts, repair-pipeline.ts
+packages/cli/src/ai/          — ai-adapter.ts, anthropic-adapter.ts, openai-adapter.ts, create-adapter.ts, prompt-builder.ts, ai-response-schema.ts
+packages/cli/src/reporter/    — pw-doctor-fixture.ts, pw-doctor-reporter.ts, index.ts
+packages/cli/src/interactive/ — prompt.ts
 packages/cli/src/config/      — loader.ts, defaults.ts, schema.ts
 packages/cli/src/report/      — terminal-reporter.ts, json-reporter.ts
-packages/cli/src/utils/       — safe-exec.ts, safe-path.ts, error-sanitizer.ts, logger.ts, file-finder.ts
+packages/cli/src/utils/       — safe-exec.ts, safe-path.ts, error-sanitizer.ts, logger.ts, file-finder.ts, hash.ts
 packages/cli/tests/           — unit tests (utils/, config/, core/, repair/, report/) + e2e/
 packages/shared/src/          — types.ts, schemas.ts, constants.ts
 ```
 
 ## Build & Test Commands
 - `npm run build` — builds all packages via Turborepo
-- `cd packages/cli && npx vitest run` — runs all 72 tests
+- `cd packages/cli && npx vitest run` — runs all 234 tests
 - `node packages/cli/dist/bin/pw-doctor.js --help` — run CLI
 
 ## Conventions
