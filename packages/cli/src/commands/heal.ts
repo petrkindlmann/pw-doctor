@@ -18,11 +18,12 @@ import { createAiAdapter } from '../ai/create-adapter.js';
 import { checkAiConsent, recordAiConsent, promptForAiConsent } from '../ai/consent-gate.js';
 import { promptForCandidate, assertTTY } from '../interactive/prompt.js';
 import { EXIT_CODES, PW_DOCTOR_CAPTURES_DIR } from '@pw-doctor/shared';
-import type { RepairRecord } from '@pw-doctor/shared';
+import type { RepairRecord, AiRepairInput } from '@pw-doctor/shared';
 import type { AiRepairAdapter } from '../ai/ai-adapter.js';
 import { hashString } from '../utils/hash.js';
 import { logAiCall, hashPayload } from '../ai/audit-logger.js';
 import { startWatchMode } from './watch.js';
+import { buildRepairPrompt } from '../ai/prompt-builder.js';
 
 export function findCapturedHtml(cwd: string, relativeFile: string, testName: string): string | undefined {
   const absoluteFile = path.resolve(cwd, relativeFile);
@@ -46,6 +47,44 @@ export function readCodeContext(filePath: string, line: number, contextLines: nu
   } catch {
     return '';
   }
+}
+
+export interface PreviewAiPayloadInput {
+  failure: { file: string; line: number; selector: string; method: string; error: string };
+  redactedHtml: string;
+  contextCode: string;
+}
+
+export function formatAiPayloadPreview(input: PreviewAiPayloadInput): string {
+  const aiInput: AiRepairInput = {
+    failedSelector: input.failure.selector,
+    failedMethod: input.failure.method,
+    errorMessage: input.failure.error,
+    filePath: input.failure.file,
+    line: input.failure.line,
+    redactedHtml: input.redactedHtml,
+    contextCode: input.contextCode,
+  };
+
+  const { systemPrompt, userMessage } = buildRepairPrompt(aiInput);
+
+  const htmlSizeBytes = Buffer.byteLength(input.redactedHtml, 'utf-8');
+  const fullPayload = systemPrompt + userMessage;
+  const estimatedTokens = Math.ceil(fullPayload.length / 4);
+
+  const lines: string[] = [
+    '=== System Prompt: ===',
+    systemPrompt,
+    '',
+    '=== User Message: ===',
+    userMessage,
+    '',
+    '=== Payload Stats: ===',
+    `  HTML size: ${htmlSizeBytes} bytes`,
+    `  Estimated tokens: ${estimatedTokens}`,
+  ];
+
+  return lines.join('\n');
 }
 
 export interface CiJsonOutput {
@@ -75,6 +114,7 @@ export function healCommand(): Command {
     .option('--interactive', 'Interactively approve/edit/skip each fix')
     .option('--no-ai', 'Disable AI repair even if configured')
     .option('--watch', 'Watch test files for changes and re-run heal')
+    .option('--preview-ai-payload', 'Show AI payload without sending')
     .action(async (options) => {
       const cwd = process.cwd();
       const runId = `pwd_${crypto.randomUUID().slice(0, 8)}`;
@@ -162,6 +202,50 @@ export function healCommand(): Command {
       }
 
       spinner.text = `Found ${failures.length} broken selector(s). Analyzing...`;
+
+      // --preview-ai-payload: show the AI prompt for the first failure with captured HTML and exit
+      if (options.previewAiPayload) {
+        spinner.stop();
+        for (const failure of failures) {
+          const filePath = path.resolve(cwd, failure.file);
+          assertWithinRoot(cwd, filePath);
+          if (!fs.existsSync(filePath)) continue;
+
+          const capturedHtml = findCapturedHtml(cwd, failure.file, failure.testName);
+          if (!capturedHtml) continue;
+
+          const redactedHtml = redactHtml(capturedHtml, {
+            preset: config.redact.preset as 'moderate' | 'strict' | 'minimal',
+            maxDepth: config.redact.maxDepth,
+            maxSize: config.redact.maxSize,
+            stripAttributes: config.redact.stripAttributes,
+            preserveAttributes: config.redact.preserveAttributes,
+            stripSelectors: config.redact.stripSelectors,
+            customPatterns: config.redact.patterns,
+          }).html;
+
+          const contextCode = readCodeContext(filePath, failure.line);
+
+          const preview = formatAiPayloadPreview({
+            failure: {
+              file: failure.file,
+              line: failure.line,
+              selector: failure.selector,
+              method: failure.method,
+              error: failure.error,
+            },
+            redactedHtml,
+            contextCode,
+          });
+
+          console.log(preview);
+          process.exit(EXIT_CODES.HEALTHY);
+        }
+
+        // No failure with captured HTML found
+        logger.warn('No failures with captured DOM HTML found for preview.');
+        process.exit(EXIT_CODES.BROKEN_FOUND);
+      }
 
       // Step 2: For each failure, generate repair plans
       const repairs: RepairRecord[] = [];
