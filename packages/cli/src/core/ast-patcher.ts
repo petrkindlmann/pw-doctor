@@ -19,6 +19,13 @@ function babelNode(n: unknown): Node {
   return n as Node;
 }
 
+/**
+ * Replace a selector value (and optionally the method name) in a Playwright
+ * locator call at a specific line. Preserves formatting via recast.
+ *
+ * Assumes the caller has already validated that the call site is a Playwright
+ * locator (e.g., via extractSelectors). No receiver validation is performed.
+ */
 export function patchSelector(
   sourceCode: string,
   targetLine: number,

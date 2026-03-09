@@ -49,7 +49,7 @@ test('demo', async ({ page }) => {
 });
 `;
     const result = patchSelector(code, 2, '.old-class', '.new-class');
-    expect(result.patchedCode).toContain('.new-class');
+    expect(result.patchedCode).toContain('".new-class"');
     expect(result.patched).toBe(true);
   });
 
