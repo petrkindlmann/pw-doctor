@@ -12,8 +12,38 @@ import { patchSelector } from '../core/ast-patcher.js';
 import { createBackup, rollback } from '../repair/backup.js';
 import { logger, setCIMode } from '../utils/logger.js';
 import { assertWithinRoot } from '../utils/safe-path.js';
-import { EXIT_CODES } from '@pw-doctor/shared';
+import { redactHtml } from '../core/dom-redactor.js';
+import { createAiAdapter } from '../ai/create-adapter.js';
+import { EXIT_CODES, PW_DOCTOR_CAPTURES_DIR } from '@pw-doctor/shared';
 import type { RepairRecord } from '@pw-doctor/shared';
+import type { AiRepairAdapter } from '../ai/ai-adapter.js';
+
+function hashString(s: string): string {
+  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 12);
+}
+
+export function findCapturedHtml(cwd: string, relativeFile: string, testName: string): string | undefined {
+  const absoluteFile = path.resolve(cwd, relativeFile);
+  const fileHash = hashString(absoluteFile);
+  const testHash = hashString(testName);
+  const captureFile = path.join(cwd, PW_DOCTOR_CAPTURES_DIR, `${fileHash}-${testHash}.html`);
+  if (fs.existsSync(captureFile)) {
+    return fs.readFileSync(captureFile, 'utf-8');
+  }
+  return undefined;
+}
+
+export function readCodeContext(filePath: string, line: number, contextLines: number = 5): string {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+    const start = Math.max(0, line - contextLines - 1);
+    const end = Math.min(lines.length, line + contextLines);
+    return lines.slice(start, end).join('\n');
+  } catch {
+    return '';
+  }
+}
 
 export function healCommand(): Command {
   return new Command('heal')
@@ -23,6 +53,7 @@ export function healCommand(): Command {
     .option('--min-confidence <n>', 'Minimum confidence to apply', '85')
     .option('--max-files <n>', 'Maximum files to process')
     .option('--ci', 'CI mode: JSON output, no interactive prompts')
+    .option('--no-ai', 'Disable AI repair even if configured')
     .action(async (options) => {
       const cwd = process.cwd();
       const runId = `pwd_${crypto.randomUUID().slice(0, 8)}`;
@@ -39,6 +70,20 @@ export function healCommand(): Command {
 
       const minConfidence = parseInt(options.minConfidence, 10) || config.repair.autoApplyThreshold;
       const shouldApply = options.apply === true;
+
+      // Create AI adapter if configured and not disabled
+      let aiAdapter: AiRepairAdapter | undefined;
+      if (config.ai.enabled && options.ai !== false) {
+        try {
+          aiAdapter = createAiAdapter({
+            provider: config.ai.provider,
+            model: config.ai.model,
+            maxTokens: config.ai.maxTokens,
+          });
+        } catch (err) {
+          logger.warn(`AI repair disabled: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
 
       // Step 1: Run Playwright tests
       const spinner = ora('Running Playwright tests...').start();
@@ -58,6 +103,7 @@ export function healCommand(): Command {
       const repairs: RepairRecord[] = [];
       const plans: Array<{ plan: RepairPlan; sourceCode: string }> = [];
       const maxFiles = options.maxFiles ? parseInt(options.maxFiles, 10) : config.repair.maxFiles;
+      let totalAiTokens = 0;
 
       for (const failure of failures) {
         if (plans.length >= maxFiles) break;
@@ -68,11 +114,23 @@ export function healCommand(): Command {
 
         const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
-        // Build repair plan (without live DOM for now — Phase 2 MVP)
-        const plan = await buildRepairPlan(failure, '', {
+        // Find and redact captured HTML
+        const capturedHtml = findCapturedHtml(cwd, failure.file, failure.testName);
+        const redactedHtml = capturedHtml
+          ? redactHtml(capturedHtml, { preset: config.redact.preset as 'moderate' | 'strict' | 'minimal' }).html
+          : '';
+
+        // Read code context around the failure line
+        const _contextCode = readCodeContext(filePath, failure.line);
+
+        // Build repair plan with captured DOM and AI
+        const plan = await buildRepairPlan(failure, redactedHtml, {
           autoApplyThreshold: minConfidence,
           suggestThreshold: config.repair.suggestThreshold,
+          aiAdapter,
         });
+
+        if (plan.aiTokensUsed) totalAiTokens += plan.aiTokensUsed;
 
         plans.push({ plan, sourceCode });
       }
@@ -217,6 +275,9 @@ export function healCommand(): Command {
       console.log(
         `  ${chalk.green(`${verified} verified`)} | ${chalk.red(`${rolledBackCount} rolled back`)} | ${failures.length - fixableCount} unfixable`,
       );
+      if (totalAiTokens > 0) {
+        console.log(`  AI tokens used: ${totalAiTokens}`);
+      }
 
       if (rolledBackCount > 0) {
         process.exit(EXIT_CODES.FIXES_FAILED);
