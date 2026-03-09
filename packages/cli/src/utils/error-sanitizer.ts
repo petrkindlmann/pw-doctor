@@ -71,6 +71,12 @@ const ABSOLUTE_PATH_PATTERN = /(?:\/[^\s"',/]+(?:\/[^\s"',/]+)+)|(?:[A-Z]:\\[^\s
 export function sanitizeOutput(text: string, projectRoot?: string): string {
   let result = text;
 
+  // Apply local SENSITIVE_PATTERNS (Bearer tokens, pwd_ keys, long hex/base64)
+  for (const { pattern, replacement } of SENSITIVE_PATTERNS) {
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, replacement);
+  }
+
   // Apply REDACT_SENSITIVE_PATTERNS (fresh copies to avoid lastIndex issues)
   const patterns = freshSharedPatterns();
   for (const pattern of patterns) {

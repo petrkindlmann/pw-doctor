@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { sanitizeForLog } from './error-sanitizer.js';
+import { sanitizeOutput } from './error-sanitizer.js';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -28,31 +28,31 @@ function shouldLog(level: LogLevel): boolean {
 export const logger = {
   debug(msg: string): void {
     if (!shouldLog('debug')) return;
-    const safe = sanitizeForLog(msg);
+    const safe = sanitizeOutput(msg);
     if (!ciMode) console.debug(chalk.gray(`  ${safe}`));
   },
 
   info(msg: string): void {
     if (!shouldLog('info')) return;
-    const safe = sanitizeForLog(msg);
+    const safe = sanitizeOutput(msg);
     console.log(safe);
   },
 
   warn(msg: string): void {
     if (!shouldLog('warn')) return;
-    const safe = sanitizeForLog(msg);
+    const safe = sanitizeOutput(msg);
     console.warn(chalk.yellow(`⚠ ${safe}`));
   },
 
   error(msg: string): void {
     if (!shouldLog('error')) return;
-    const safe = sanitizeForLog(msg);
+    const safe = sanitizeOutput(msg);
     console.error(chalk.red(`✖ ${safe}`));
   },
 
   success(msg: string): void {
     if (!shouldLog('info')) return;
-    const safe = sanitizeForLog(msg);
+    const safe = sanitizeOutput(msg);
     console.log(chalk.green(`✔ ${safe}`));
   },
 };
