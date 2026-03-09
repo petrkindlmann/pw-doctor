@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { findTestFiles } from '../utils/file-finder.js';
 import { extractSelectors } from '../core/selector-extractor.js';
 import { enrichWithFragility } from '../core/fragility-scorer.js';
+import { setupGitleaksHook } from '../utils/gitleaks-hook.js';
 import { PW_DOCTOR_DIR, CONFIG_FILE_NAMES, EXIT_CODES } from '@pw-doctor/shared';
 
 export function initCommand(): Command {
@@ -68,7 +69,15 @@ export function initCommand(): Command {
       // 7. Add .pw-doctor/ to .gitignore
       ensureGitignore(cwd);
 
-      // 8. Scan for selectors
+      // 8. Set up pre-commit hook for secret scanning
+      const hookResult = setupGitleaksHook(cwd);
+      if (hookResult.installed) {
+        logger.success(hookResult.message);
+      } else {
+        logger.info(hookResult.message);
+      }
+
+      // 9. Scan for selectors
       const testDirAbs = path.resolve(cwd, testDir);
       if (fs.existsSync(testDirAbs)) {
         const testFiles = findTestFiles(testDirAbs, '**/*.spec.ts');
