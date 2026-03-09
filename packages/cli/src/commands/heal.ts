@@ -12,6 +12,7 @@ import { patchSelector } from '../core/ast-patcher.js';
 import { createBackup, rollback } from '../repair/backup.js';
 import { logger, setCIMode } from '../utils/logger.js';
 import { assertWithinRoot } from '../utils/safe-path.js';
+import { sanitizeOutput } from '../utils/error-sanitizer.js';
 import { redactHtml } from '../core/dom-redactor.js';
 import { createAiAdapter } from '../ai/create-adapter.js';
 import { promptForCandidate, assertTTY } from '../interactive/prompt.js';
@@ -42,6 +43,22 @@ export function readCodeContext(filePath: string, line: number, contextLines: nu
   } catch {
     return '';
   }
+}
+
+export interface CiJsonOutput {
+  status: 'healthy' | 'broken_found' | 'fixes_applied' | 'fixes_failed';
+  failures: number;
+  fixable: number;
+  verified: number;
+  rolledBack: number;
+  repairs: RepairRecord[];
+  aiTokensUsed: number;
+}
+
+function emitCiJson(data: CiJsonOutput, projectRoot: string): void {
+  const raw = JSON.stringify(data, null, 2);
+  const sanitized = sanitizeOutput(raw, projectRoot);
+  console.log(sanitized);
 }
 
 export function healCommand(): Command {
@@ -108,6 +125,17 @@ export function healCommand(): Command {
 
       if (failures.length === 0) {
         spinner.succeed('All tests passing — no broken selectors found');
+        if (options.ci) {
+          emitCiJson({
+            status: 'healthy',
+            failures: 0,
+            fixable: 0,
+            verified: 0,
+            rolledBack: 0,
+            repairs: [],
+            aiTokensUsed: 0,
+          }, cwd);
+        }
         if (!isWatch) process.exit(EXIT_CODES.HEALTHY);
       }
 
@@ -161,6 +189,17 @@ export function healCommand(): Command {
         for (const { plan } of plans) {
           console.log(chalk.red(`  ✖ ${plan.failure.file}:${plan.failure.line} — ${plan.failure.selector}`));
           console.log(chalk.gray(`    No repair candidates found`));
+        }
+        if (options.ci) {
+          emitCiJson({
+            status: 'broken_found',
+            failures: failures.length,
+            fixable: 0,
+            verified: 0,
+            rolledBack: 0,
+            repairs: [],
+            aiTokensUsed: totalAiTokens,
+          }, cwd);
         }
         if (!isWatch) process.exit(EXIT_CODES.BROKEN_FOUND);
       }
@@ -272,6 +311,17 @@ export function healCommand(): Command {
       // Step 5: Apply fixes if --apply
       if (!shouldApply) {
         console.log(chalk.gray('Dry run — no changes applied. Use --apply to apply fixes.'));
+        if (options.ci) {
+          emitCiJson({
+            status: 'broken_found',
+            failures: failures.length,
+            fixable: fixableCount,
+            verified: 0,
+            rolledBack: 0,
+            repairs: [],
+            aiTokensUsed: totalAiTokens,
+          }, cwd);
+        }
         if (!isWatch) process.exit(EXIT_CODES.BROKEN_FOUND);
       }
 
@@ -367,6 +417,23 @@ export function healCommand(): Command {
       );
       if (totalAiTokens > 0) {
         console.log(`  AI tokens used: ${totalAiTokens}`);
+      }
+
+      if (options.ci) {
+        const ciStatus = rolledBackCount > 0
+          ? 'fixes_failed' as const
+          : verified > 0
+            ? 'fixes_applied' as const
+            : 'broken_found' as const;
+        emitCiJson({
+          status: ciStatus,
+          failures: failures.length,
+          fixable: fixableCount,
+          verified,
+          rolledBack: rolledBackCount,
+          repairs,
+          aiTokensUsed: totalAiTokens,
+        }, cwd);
       }
 
       if (!isWatch) {

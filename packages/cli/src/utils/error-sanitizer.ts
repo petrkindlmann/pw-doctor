@@ -1,4 +1,7 @@
 
+import path from 'node:path';
+import { REDACT_SENSITIVE_PATTERNS } from '@pw-doctor/shared';
+
 const SENSITIVE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   // API keys with known prefixes
   { pattern: /\bsk-ant-[A-Za-z0-9_-]+/g, replacement: '[REDACTED]' },
@@ -41,5 +44,52 @@ export function sanitizeForLog(text: string): string {
     pattern.lastIndex = 0;
     result = result.replace(pattern, replacement);
   }
+  return result;
+}
+
+/**
+ * Creates fresh RegExp copies from the shared patterns to avoid stateful lastIndex issues
+ * with the global /g flag on module-level constants.
+ */
+function freshSharedPatterns(): RegExp[] {
+  return REDACT_SENSITIVE_PATTERNS.map(
+    (p) => new RegExp(p.source, p.flags),
+  );
+}
+
+/**
+ * Regex to detect absolute file paths:
+ * - Unix-style: /some/path/to/file (at least two segments)
+ * - Windows-style: C:\some\path
+ */
+const ABSOLUTE_PATH_PATTERN = /(?:\/[^\s"',/]+(?:\/[^\s"',/]+)+)|(?:[A-Z]:\\[^\s"',]+)/g;
+
+/**
+ * Sanitizes CLI output by applying shared sensitive patterns and
+ * stripping absolute file paths outside the project root.
+ */
+export function sanitizeOutput(text: string, projectRoot?: string): string {
+  let result = text;
+
+  // Apply REDACT_SENSITIVE_PATTERNS (fresh copies to avoid lastIndex issues)
+  const patterns = freshSharedPatterns();
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, '[REDACTED]');
+  }
+
+  // Strip absolute file paths outside the project root
+  const root = projectRoot ?? process.cwd();
+  const rootWithSlash = root.endsWith('/') ? root : root + '/';
+  result = result.replace(ABSOLUTE_PATH_PATTERN, (match) => {
+    // If the path starts with the project root, make it relative
+    if (match === root || match.startsWith(rootWithSlash)) {
+      return path.relative(root, match) || '.';
+    }
+    // Otherwise replace entirely with a relative placeholder
+    const basename = path.basename(match);
+    return basename ? `./${basename}` : '[PATH]';
+  });
+
   return result;
 }
