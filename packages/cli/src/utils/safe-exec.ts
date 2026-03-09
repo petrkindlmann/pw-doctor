@@ -55,6 +55,7 @@ export async function safeExec(
   options?: { cwd?: string; timeout?: number },
 ): Promise<ExecResult> {
   return new Promise((resolve) => {
+    let settled = false;
     const child = execFile(
       command,
       args,
@@ -65,20 +66,19 @@ export async function safeExec(
         maxBuffer: 10 * 1024 * 1024, // 10MB
       },
       (error, stdout, stderr) => {
+        if (settled) return;
+        settled = true;
         resolve({
           stdout: stdout ?? '',
           stderr: stderr ?? '',
-          exitCode: error?.code
-            ? typeof error.code === 'number'
-              ? error.code
-              : 1
-            : 0,
+          exitCode: error ? (child.exitCode ?? 1) : 0,
         });
       },
     );
 
-    // Handle spawn errors
     child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
       resolve({
         stdout: '',
         stderr: err.message,
