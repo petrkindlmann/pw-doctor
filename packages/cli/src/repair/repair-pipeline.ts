@@ -4,6 +4,7 @@ import type { AiRepairAdapter } from '../ai/ai-adapter.js';
 import { DomAnalyzer } from '../core/dom-analyzer.js';
 import { tryTextMatch } from './text-match.js';
 import { tryAttributeMatch } from './attribute-match.js';
+import { tryStructuralMatch } from './structural-match.js';
 import { rankCandidates, selectBestCandidate, type RankedCandidate } from './candidate-ranker.js';
 import { validateAiSelector } from '../ai/selector-validator.js';
 import { verifyAgainstDom } from './dom-hard-gate.js';
@@ -38,7 +39,15 @@ export async function generateRepairCandidates(
   });
   if (textCandidate) candidates.push(textCandidate);
 
-  // Strategy 3: AI-powered repair (when adapter is provided and HTML is available)
+  // Strategy 3: Structural similarity
+  const structCandidate = tryStructuralMatch({
+    failedSelector: failure.selector,
+    failedMethod: failure.method,
+    analyzer,
+  });
+  if (structCandidate) candidates.push(structCandidate);
+
+  // Strategy 4: AI-powered repair (when adapter is provided and HTML is available)
   let aiTokensUsed: number | undefined;
   let aiInputTokens: number | undefined;
   let aiOutputTokens: number | undefined;
