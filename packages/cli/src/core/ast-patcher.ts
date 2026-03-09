@@ -78,8 +78,15 @@ export function patchSelector(
 
       // Match the old selector value
       if (t.isStringLiteral(firstArg) && firstArg.value === oldSelector) {
-        // Patch the selector
+        // Preserve original quote style by switching to ESTree Literal type,
+        // which recast prints via getPossibleRaw (respects extra.raw).
+        // Recast's StringLiteral handler ignores extra.raw entirely.
+        const rawNode = firstArg as unknown as { type: string; raw?: string; extra?: { rawValue?: string; raw?: string } };
+        const originalQuote = rawNode.extra?.raw?.[0] ?? "'";
         firstArg.value = newSelector;
+        rawNode.type = 'Literal';
+        rawNode.raw = `${originalQuote}${newSelector}${originalQuote}`;
+        rawNode.extra = { rawValue: newSelector, raw: `${originalQuote}${newSelector}${originalQuote}` };
 
         // Optionally change the method name
         if (newMethod) {

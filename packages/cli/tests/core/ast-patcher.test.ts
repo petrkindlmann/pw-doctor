@@ -11,8 +11,8 @@ test('demo', async ({ page }) => {
 });
 `;
     const result = patchSelector(code, 4, '.old-class', '.new-class');
-    expect(result.patchedCode).toContain('.new-class');
-    expect(result.patchedCode).not.toContain('.old-class');
+    expect(result.patchedCode).toContain("'.new-class'");
+    expect(result.patchedCode).not.toContain("'.old-class'");
     expect(result.patched).toBe(true);
   });
 
@@ -39,8 +39,7 @@ test('demo', async ({ page }) => {
 });
 `;
     const result = patchSelector(code, 2, '.old', 'my-test-id', 'getByTestId');
-    expect(result.patchedCode).toContain('getByTestId(');
-    expect(result.patchedCode).toContain('my-test-id');
+    expect(result.patchedCode).toContain("getByTestId('my-test-id')");
     expect(result.patchedCode).not.toContain('locator(');
   });
 
