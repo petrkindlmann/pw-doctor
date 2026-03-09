@@ -37,7 +37,10 @@ export function initCommand(): Command {
       const testDir = detectTestDir(cwd);
       logger.info(`Test directory: ${testDir}`);
 
-      // 4. Create config file
+      // 4. Detect AI API keys
+      const hasAiKey = Boolean(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+
+      // 5. Create config file
       const config = {
         testDir,
         testMatch: '**/*.spec.ts',
@@ -47,7 +50,7 @@ export function initCommand(): Command {
           autoApplyThreshold: 85,
           suggestThreshold: 50,
         },
-        ai: { enabled: false },
+        ai: { enabled: hasAiKey },
         report: { format: 'json', outputDir: '.pw-doctor/reports' },
       };
 
@@ -55,17 +58,17 @@ export function initCommand(): Command {
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
       logger.success(`Created ${path.relative(cwd, configPath)}`);
 
-      // 5. Create .pw-doctor directory
+      // 6. Create .pw-doctor directory
       const pwDoctorDir = path.join(cwd, PW_DOCTOR_DIR);
       fs.mkdirSync(pwDoctorDir, { recursive: true, mode: 0o700 });
       fs.mkdirSync(path.join(pwDoctorDir, 'reports'), { recursive: true, mode: 0o700 });
       fs.mkdirSync(path.join(pwDoctorDir, 'history', 'runs'), { recursive: true, mode: 0o700 });
       fs.mkdirSync(path.join(pwDoctorDir, 'backups'), { recursive: true, mode: 0o700 });
 
-      // 6. Add .pw-doctor/ to .gitignore
+      // 7. Add .pw-doctor/ to .gitignore
       ensureGitignore(cwd);
 
-      // 7. Scan for selectors
+      // 8. Scan for selectors
       const testDirAbs = path.resolve(cwd, testDir);
       if (fs.existsSync(testDirAbs)) {
         const testFiles = findTestFiles(testDirAbs, '**/*.spec.ts');
@@ -101,6 +104,28 @@ export function initCommand(): Command {
         }
         console.log('');
         console.log(`Run ${chalk.cyan('pw-doctor check')} to validate selectors against your live site.`);
+      }
+
+      // 9. Suggest reporter setup if playwright config exists
+      if (playwrightConfig) {
+        console.log('');
+        console.log(chalk.bold('To enable DOM capture for AI-powered repair, update your Playwright setup:'));
+        console.log('');
+        console.log('  1. Add reporter to playwright.config.ts:');
+        console.log(chalk.cyan("     reporter: [['default'], ['pw-doctor/reporter']]"));
+        console.log('');
+        console.log('  2. In your test files, replace:');
+        console.log(chalk.gray("     import { test, expect } from '@playwright/test';"));
+        console.log('  with:');
+        console.log(chalk.cyan("     import { test, expect } from 'pw-doctor/reporter';"));
+      }
+
+      // 10. Show AI key status
+      if (hasAiKey) {
+        logger.success('AI repair enabled (API key detected)');
+      } else {
+        console.log('');
+        logger.info('AI repair is available. Set ANTHROPIC_API_KEY or OPENAI_API_KEY to enable.');
       }
     });
 }
