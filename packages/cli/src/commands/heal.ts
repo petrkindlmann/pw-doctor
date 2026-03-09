@@ -19,6 +19,7 @@ import { EXIT_CODES, PW_DOCTOR_CAPTURES_DIR } from '@pw-doctor/shared';
 import type { RepairRecord } from '@pw-doctor/shared';
 import type { AiRepairAdapter } from '../ai/ai-adapter.js';
 import { hashString } from '../utils/hash.js';
+import { startWatchMode } from './watch.js';
 
 export function findCapturedHtml(cwd: string, relativeFile: string, testName: string): string | undefined {
   const absoluteFile = path.resolve(cwd, relativeFile);
@@ -53,6 +54,7 @@ export function healCommand(): Command {
     .option('--ci', 'CI mode: JSON output, no interactive prompts')
     .option('--interactive', 'Interactively approve/edit/skip each fix')
     .option('--no-ai', 'Disable AI repair even if configured')
+    .option('--watch', 'Watch test files for changes and re-run heal')
     .action(async (options) => {
       const cwd = process.cwd();
       const runId = `pwd_${crypto.randomUUID().slice(0, 8)}`;
@@ -70,6 +72,13 @@ export function healCommand(): Command {
       const minConfidence = parseInt(options.minConfidence, 10) || config.repair.autoApplyThreshold;
       const shouldApply = options.apply === true;
       const isInteractive = options.interactive === true;
+      const isWatch = options.watch === true;
+
+      // --watch and --interactive are mutually exclusive
+      if (isWatch && isInteractive) {
+        logger.error('--watch and --interactive cannot be used together');
+        process.exit(EXIT_CODES.TOOL_ERROR);
+      }
 
       // Interactive mode requires a TTY
       if (isInteractive) {
@@ -99,7 +108,7 @@ export function healCommand(): Command {
 
       if (failures.length === 0) {
         spinner.succeed('All tests passing — no broken selectors found');
-        process.exit(EXIT_CODES.HEALTHY);
+        if (!isWatch) process.exit(EXIT_CODES.HEALTHY);
       }
 
       spinner.text = `Found ${failures.length} broken selector(s). Analyzing...`;
@@ -153,7 +162,7 @@ export function healCommand(): Command {
           console.log(chalk.red(`  ✖ ${plan.failure.file}:${plan.failure.line} — ${plan.failure.selector}`));
           console.log(chalk.gray(`    No repair candidates found`));
         }
-        process.exit(EXIT_CODES.BROKEN_FOUND);
+        if (!isWatch) process.exit(EXIT_CODES.BROKEN_FOUND);
       }
 
       console.log('');
@@ -263,7 +272,7 @@ export function healCommand(): Command {
       // Step 5: Apply fixes if --apply
       if (!shouldApply) {
         console.log(chalk.gray('Dry run — no changes applied. Use --apply to apply fixes.'));
-        process.exit(EXIT_CODES.BROKEN_FOUND);
+        if (!isWatch) process.exit(EXIT_CODES.BROKEN_FOUND);
       }
 
       // Apply fixes
@@ -360,12 +369,34 @@ export function healCommand(): Command {
         console.log(`  AI tokens used: ${totalAiTokens}`);
       }
 
-      if (rolledBackCount > 0) {
-        process.exit(EXIT_CODES.FIXES_FAILED);
-      } else if (verified > 0) {
-        process.exit(EXIT_CODES.FIXES_APPLIED);
-      } else {
-        process.exit(EXIT_CODES.BROKEN_FOUND);
+      if (!isWatch) {
+        if (rolledBackCount > 0) {
+          process.exit(EXIT_CODES.FIXES_FAILED);
+        } else if (verified > 0) {
+          process.exit(EXIT_CODES.FIXES_APPLIED);
+        } else {
+          process.exit(EXIT_CODES.BROKEN_FOUND);
+        }
+      }
+
+      // Step 6: Watch mode — stay alive and re-run on file changes
+      if (isWatch) {
+        startWatchMode(cwd, config.testDir, config.testMatch, async (changedFile) => {
+          console.log(chalk.cyan(`Re-running tests for ${path.relative(cwd, changedFile)}...`));
+          const result = await runPlaywrightTests(cwd, {
+            testFile: path.relative(cwd, changedFile),
+          });
+          const results = parsePlaywrightJsonOutput(result.stdout);
+          const newFailures = extractFailedSelectors(results);
+          if (newFailures.length === 0) {
+            console.log(chalk.green('All tests passing for this file.'));
+          } else {
+            console.log(chalk.red(`Found ${newFailures.length} broken selector(s) in changed file.`));
+            for (const f of newFailures) {
+              console.log(chalk.red(`  ${f.file}:${f.line} — ${f.selector}`));
+            }
+          }
+        });
       }
     });
 }
