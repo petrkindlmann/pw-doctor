@@ -1,6 +1,6 @@
 import type { RepairCandidate } from '@pw-doctor/shared';
 
-export type CandidateCategory = 'auto_apply' | 'confirm' | 'suggest' | 'skip';
+export type CandidateCategory = 'auto_apply' | 'suggest' | 'skip';
 
 export interface RankedCandidate {
   candidate: RepairCandidate;
