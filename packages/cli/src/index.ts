@@ -4,6 +4,7 @@ import { checkCommand } from './commands/check.js';
 import { healCommand } from './commands/heal.js';
 import { credentialsCommand } from './commands/credentials.js';
 import { calibrateCommand } from './commands/calibrate.js';
+import { reportCommand } from './commands/report.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -18,6 +19,7 @@ export function createProgram(): Command {
   program.addCommand(healCommand());
   program.addCommand(credentialsCommand());
   program.addCommand(calibrateCommand());
+  program.addCommand(reportCommand());
 
   return program;
 }
