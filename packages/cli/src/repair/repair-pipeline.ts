@@ -5,6 +5,7 @@ import { DomAnalyzer } from '../core/dom-analyzer.js';
 import { tryTextMatch } from './text-match.js';
 import { tryAttributeMatch } from './attribute-match.js';
 import { tryStructuralMatch } from './structural-match.js';
+import { tryAnchorMatch } from './anchor-match.js';
 import { rankCandidates, selectBestCandidate, type RankedCandidate } from './candidate-ranker.js';
 import { validateAiSelector } from '../ai/selector-validator.js';
 import { verifyAgainstDom } from './dom-hard-gate.js';
@@ -47,7 +48,15 @@ export async function generateRepairCandidates(
   });
   if (structCandidate) candidates.push(structCandidate);
 
-  // Strategy 4: AI-powered repair (when adapter is provided and HTML is available)
+  // Strategy 4: Anchor match
+  const anchorCandidate = tryAnchorMatch({
+    failedSelector: failure.selector,
+    failedMethod: failure.method,
+    analyzer,
+  });
+  if (anchorCandidate) candidates.push(anchorCandidate);
+
+  // Strategy 5: AI-powered repair (when adapter is provided and HTML is available)
   let aiTokensUsed: number | undefined;
   let aiInputTokens: number | undefined;
   let aiOutputTokens: number | undefined;
