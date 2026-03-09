@@ -40,7 +40,10 @@ function deepMerge<T extends Record<string, unknown>>(
 ): T {
   const result = { ...defaults };
 
+  const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
   for (const key of Object.keys(overrides)) {
+    if (UNSAFE_KEYS.has(key)) continue;
     const defaultVal = (defaults as Record<string, unknown>)[key];
     const overrideVal = overrides[key];
 
