@@ -6,6 +6,7 @@ import { tryTextMatch } from './text-match.js';
 import { tryAttributeMatch } from './attribute-match.js';
 import { rankCandidates, selectBestCandidate, type RankedCandidate } from './candidate-ranker.js';
 import { validateAiSelector } from '../ai/selector-validator.js';
+import { verifyAgainstDom } from './dom-hard-gate.js';
 
 export interface GenerateRepairOptions {
   aiAdapter?: AiRepairAdapter;
@@ -56,6 +57,12 @@ export async function generateRepairCandidates(
       for (const aiCandidate of aiResponse.candidates) {
         const validation = validateAiSelector(aiCandidate.selector, aiCandidate.method);
         if (!validation.valid) continue;
+
+        const domGate = verifyAgainstDom(
+          { selector: aiCandidate.selector, method: aiCandidate.method },
+          analyzer,
+        );
+        if (!domGate.passes) continue;
 
         candidates.push({
           selector: aiCandidate.selector,
