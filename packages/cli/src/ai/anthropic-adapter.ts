@@ -46,6 +46,10 @@ export class AnthropicAdapter implements AiRepairAdapter {
 
       const parsed = JSON.parse(jsonMatch[0]);
 
+      if (!Array.isArray(parsed.candidates)) {
+        throw new AiAdapterError('AI response missing candidates array', 'anthropic', false);
+      }
+
       return {
         candidates: parsed.candidates.map((c: Record<string, unknown>) => ({
           selector: String(c.selector),
