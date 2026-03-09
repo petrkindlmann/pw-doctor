@@ -22,10 +22,16 @@ export function startWatchMode(
 
   watcher.on('change', (filePath) => {
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(async () => {
+    debounceTimer = setTimeout(() => {
       console.log(chalk.cyan(`\nChange detected: ${path.relative(cwd, filePath as string)}`));
-      await onFileChange(filePath as string);
-      console.log(chalk.cyan('\nWatching for changes...'));
+      onFileChange(filePath as string)
+        .then(() => {
+          console.log(chalk.cyan('\nWatching for changes...'));
+        })
+        .catch((err) => {
+          console.error(chalk.red(`Error processing change: ${err instanceof Error ? err.message : String(err)}`));
+          console.log(chalk.cyan('\nWatching for changes...'));
+        });
     }, 500);
   });
 

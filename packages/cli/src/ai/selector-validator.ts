@@ -42,6 +42,10 @@ export function validateAiSelector(selector: string, method: string): SelectorVa
     return { valid: false, reason: 'Selector must not contain Function() calls' };
   }
 
+  if (/[\r\n]/.test(selector)) {
+    return { valid: false, reason: 'Selector must not contain newlines' };
+  }
+
   if (!KNOWN_METHODS.has(method)) {
     return { valid: false, reason: `Unknown locator method: ${method}` };
   }

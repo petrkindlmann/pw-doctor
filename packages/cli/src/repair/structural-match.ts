@@ -18,6 +18,16 @@ const NON_CSS_METHODS = new Set([
   'getByTestId',
 ]);
 
+/** Escape a value for use inside a CSS attribute selector: [attr="value"] */
+function cssEscapeAttr(value: string): string {
+  return value.replace(/["\\]/g, '\\$&');
+}
+
+/** Escape a value for use as a CSS identifier (id, class name) */
+function cssEscape(value: string): string {
+  return value.replace(/([^a-zA-Z0-9_-])/g, '\\$1');
+}
+
 interface SelectorHints {
   tag: string | null;
   classes: string[];
@@ -125,10 +135,15 @@ function generateSelector(element: DomElement): { selector: string; method: stri
   let css = element.tag || '*';
 
   if (element.attributes['id']) {
-    css = `${element.tag || ''}#${element.attributes['id']}`;
+    css = `${element.tag || ''}#${cssEscape(element.attributes['id'])}`;
   } else if (element.attributes['class']) {
     const classes = element.attributes['class'].split(/\s+/).filter(Boolean);
-    css = (element.tag || '') + classes.map((c) => `.${c}`).join('');
+    // Use attribute selector form to avoid issues with special chars (Tailwind colons, etc.)
+    if (classes.some((c) => /[^a-zA-Z0-9_-]/.test(c))) {
+      css = (element.tag || '') + classes.map((c) => `[class~="${cssEscapeAttr(c)}"]`).join('');
+    } else {
+      css = (element.tag || '') + classes.map((c) => `.${c}`).join('');
+    }
   }
 
   return {

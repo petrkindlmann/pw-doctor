@@ -244,7 +244,7 @@ describe('calibrateCommand', () => {
 
     const errorOutput = consoleErrorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(errorOutput).toContain('Cannot read corpus file');
-    expect(exitSpy).toHaveBeenCalledWith(0);
+    expect(exitSpy).toHaveBeenCalledWith(2);
   });
 
   it('shows error for invalid JSON', async () => {
@@ -256,7 +256,7 @@ describe('calibrateCommand', () => {
 
     const errorOutput = consoleErrorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(errorOutput).toContain('Invalid JSON');
-    expect(exitSpy).toHaveBeenCalledWith(0);
+    expect(exitSpy).toHaveBeenCalledWith(2);
   });
 
   it('shows Zod validation error for invalid corpus entries', async () => {
@@ -267,7 +267,7 @@ describe('calibrateCommand', () => {
 
     const errorOutput = consoleErrorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(errorOutput).toContain('Corpus validation failed');
-    expect(exitSpy).toHaveBeenCalledWith(0);
+    expect(exitSpy).toHaveBeenCalledWith(2);
   });
 
   it('outputs JSON in CI mode', async () => {

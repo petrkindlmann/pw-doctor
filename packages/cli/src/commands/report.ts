@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PW_DOCTOR_DIR } from '@pw-doctor/shared';
 import type { RunHistory, RepairRecord } from '@pw-doctor/shared';
+import { assertWithinRoot } from '../utils/safe-path.js';
 
 export interface AggregatedReport {
   generatedAt: string;
@@ -42,6 +43,9 @@ export function loadRunHistory(historyDir: string, last: number): RunHistory[] {
     try {
       const content = fs.readFileSync(path.join(historyDir, file), 'utf-8');
       const parsed = JSON.parse(content) as RunHistory;
+      // Runtime validation: skip files missing required fields
+      if (!parsed || typeof parsed !== 'object' || !parsed.results || !parsed.repairs) continue;
+      if (typeof parsed.results.totalSelectors !== 'number') continue;
       runs.push(parsed);
     } catch {
       // skip malformed files
@@ -368,6 +372,7 @@ export function reportCommand(): Command {
         ? path.resolve(cwd, options.output)
         : getDefaultOutputPath(cwd, format);
 
+      assertWithinRoot(cwd, outputPath);
       fs.mkdirSync(path.dirname(outputPath), { recursive: true, mode: 0o700 });
       fs.writeFileSync(outputPath, content, { mode: 0o600 });
 

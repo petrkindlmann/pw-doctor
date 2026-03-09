@@ -198,7 +198,7 @@ export function calibrateCommand(): Command {
         rawContent = fs.readFileSync(options.corpus, 'utf-8');
       } catch {
         logger.error(`Cannot read corpus file: ${options.corpus}`);
-        process.exit(0);
+        process.exit(2);
         return;
       }
 
@@ -208,7 +208,7 @@ export function calibrateCommand(): Command {
         rawJson = JSON.parse(rawContent);
       } catch {
         logger.error(`Invalid JSON in corpus file: ${options.corpus}`);
-        process.exit(0);
+        process.exit(2);
         return;
       }
 
@@ -217,7 +217,7 @@ export function calibrateCommand(): Command {
       if (!validation.success) {
         const issues = validation.error.issues.map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`).join('\n');
         logger.error(`Corpus validation failed:\n${issues}`);
-        process.exit(0);
+        process.exit(2);
         return;
       }
 

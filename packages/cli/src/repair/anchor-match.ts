@@ -18,6 +18,11 @@ const NON_CSS_METHODS = new Set([
   'getByTestId',
 ]);
 
+/** Escape a value for use inside a CSS attribute selector: [attr="value"] */
+function cssEscapeAttr(value: string): string {
+  return value.replace(/["\\]/g, '\\$&');
+}
+
 /** Heading tags, ordered by specificity. */
 const HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
 
@@ -93,7 +98,7 @@ function findAnchors(analyzer: DomAnalyzer): AnchorElement[] {
   const testIdElements = analyzer.findByCss('[data-testid]');
   for (const el of testIdElements) {
     if (el.attributes['data-testid']) {
-      addIfNew(el, 'data-testid', `[data-testid="${el.attributes['data-testid']}"]`);
+      addIfNew(el, 'data-testid', `[data-testid="${cssEscapeAttr(el.attributes['data-testid'])}"]`);
     }
   }
 
@@ -101,7 +106,7 @@ function findAnchors(analyzer: DomAnalyzer): AnchorElement[] {
   const roleElements = analyzer.findByCss('[role]');
   for (const el of roleElements) {
     if (el.attributes['role']) {
-      addIfNew(el, 'role', `[role="${el.attributes['role']}"]`);
+      addIfNew(el, 'role', `[role="${cssEscapeAttr(el.attributes['role'])}"]`);
     }
   }
 
@@ -120,7 +125,7 @@ function findAnchors(analyzer: DomAnalyzer): AnchorElement[] {
   const ariaLabelElements = analyzer.findByCss('[aria-label]');
   for (const el of ariaLabelElements) {
     if (el.attributes['aria-label']) {
-      addIfNew(el, 'aria-label', `[aria-label="${el.attributes['aria-label']}"]`);
+      addIfNew(el, 'aria-label', `[aria-label="${cssEscapeAttr(el.attributes['aria-label'])}"]`);
     }
   }
 

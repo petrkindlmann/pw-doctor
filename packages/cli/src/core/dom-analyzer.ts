@@ -129,8 +129,24 @@ export class DomAnalyzer {
         parts.unshift(`${tag}#${id}`);
         break;
       }
-      parts.unshift(tag);
-      current = current.parent();
+
+      // Include nth-child index for disambiguation of same-tag siblings
+      const parent = current.parent();
+      if (parent.length) {
+        const siblings = parent.children(tag);
+        if (siblings.length > 1) {
+          let index = 0;
+          siblings.each((i, sib) => {
+            if (sib === current.get(0)) index = i + 1;
+          });
+          parts.unshift(`${tag}:nth-child(${index})`);
+        } else {
+          parts.unshift(tag);
+        }
+      } else {
+        parts.unshift(tag);
+      }
+      current = parent;
     }
 
     return parts.join(' > ');

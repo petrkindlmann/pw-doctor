@@ -9,8 +9,8 @@ const SENSITIVE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   { pattern: /\bpwd_[A-Za-z0-9_-]+/g, replacement: '[REDACTED]' },
   // Bearer tokens
   { pattern: /Bearer\s+[A-Za-z0-9\-._~+/]+=*/g, replacement: 'Bearer [REDACTED]' },
-  // Generic long hex/base64 tokens (40+ chars)
-  { pattern: /\b[A-Za-z0-9+/]{40,}={0,2}\b/g, replacement: '[REDACTED]' },
+  // Generic long hex/base64 tokens (40+ chars) — anchored without \b to avoid ReDoS
+  { pattern: /(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/=])/g, replacement: '[REDACTED]' },
 ];
 
 export interface SafeError {

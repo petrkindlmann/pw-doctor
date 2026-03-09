@@ -34,7 +34,9 @@ export async function runPlaywrightTests(
     args.push(options.testFile);
   }
   if (options?.testNamePattern) {
-    args.push('--grep', options.testNamePattern);
+    // Escape regex special chars to prevent ReDoS in Playwright's --grep
+    const escaped = options.testNamePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    args.push('--grep', escaped);
   }
   if (options?.timeout) {
     args.push('--timeout', String(options.timeout));
