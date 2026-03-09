@@ -5,9 +5,13 @@ CLI tool + SaaS that detects broken Playwright selectors by running tests to fai
 captures live DOM at the exact failure point, proposes safe fixes via AST patching.
 
 ## Project Status
-Pre-implementation. PRD_FINAL.md is the single source of truth.
-docs/plans/2026-03-08-security-audit.md has 58 security controls.
-archive/ has superseded planning docs — do not use for decisions.
+Phase 1 COMPLETE. 36 tests passing, clean build, CLI functional.
+- `pw-doctor init` — auto-detects project, creates config, scans selectors
+- `pw-doctor check` — extracts selectors via AST, scores fragility, reports
+- PRD_FINAL.md is the single source of truth
+- docs/plans/2026-03-08-security-audit.md has 58 security controls
+- docs/plans/2026-03-09-phase1-cli-foundation.md has the Phase 1 implementation plan
+- archive/ has superseded planning docs — do not use for decisions
 
 ## Key Architecture Decisions
 - Heal loop: run actual test → catch failure → capture DOM → repair → verify (NOT scan live sites independently)
@@ -35,18 +39,22 @@ archive/ has superseded planning docs — do not use for decisions.
 - Strip ANTHROPIC_API_KEY from child process env vars [C1.6]
 - ESLint: ban exec(), eval(), dangerouslySetInnerHTML, new Function() [CC4.1]
 
-## Repo Structure (Planned)
+## Repo Structure
 ```
-packages/cli/src/commands/    — CLI commands (init, check, heal, verify, report, watch, login)
-packages/cli/src/core/        — selector-extractor, ast-patcher, test-runner, dom-analyzer
-packages/cli/src/repair/      — repair pipeline, 4 heuristic strategies, ai-repair, candidate-ranker
-packages/cli/src/verify/      — verifier, rollback
-packages/cli/src/report/      — terminal, json, html reporters
-packages/cli/src/config/      — cosmiconfig loader, zod schema, defaults
-packages/cli/src/utils/       — dom-redactor, dom-stripper, git ops, logger
-packages/web/                 — Next.js dashboard (Phase 4+)
-packages/shared/              — shared types, schemas, constants
+packages/cli/src/bin/         — CLI entry point (pw-doctor.ts)
+packages/cli/src/commands/    — init.ts, check.ts (Phase 2: heal, verify, report)
+packages/cli/src/core/        — selector-extractor.ts, fragility-scorer.ts (Phase 2: ast-patcher, test-runner)
+packages/cli/src/config/      — loader.ts, defaults.ts, schema.ts
+packages/cli/src/report/      — terminal-reporter.ts, json-reporter.ts
+packages/cli/src/utils/       — safe-exec.ts, safe-path.ts, error-sanitizer.ts, logger.ts
+packages/cli/tests/           — unit tests (utils/, config/, core/, report/) + e2e/
+packages/shared/src/          — types.ts, schemas.ts, constants.ts
 ```
+
+## Build & Test Commands
+- `npm run build` — builds all packages via Turborepo
+- `cd packages/cli && npx vitest run` — runs all 36 tests
+- `node packages/cli/dist/bin/pw-doctor.js --help` — run CLI
 
 ## Conventions
 - TypeScript strict mode, ESM-first
