@@ -20,6 +20,7 @@ import { EXIT_CODES, PW_DOCTOR_CAPTURES_DIR } from '@pw-doctor/shared';
 import type { RepairRecord } from '@pw-doctor/shared';
 import type { AiRepairAdapter } from '../ai/ai-adapter.js';
 import { hashString } from '../utils/hash.js';
+import { logAiCall, hashPayload } from '../ai/audit-logger.js';
 import { startWatchMode } from './watch.js';
 
 export function findCapturedHtml(cwd: string, relativeFile: string, testName: string): string | undefined {
@@ -190,14 +191,32 @@ export function healCommand(): Command {
         }
 
         // Build repair plan with captured DOM and AI
+        const planStart = performance.now();
         const plan = await buildRepairPlan(failure, redactedHtml, {
           autoApplyThreshold: minConfidence,
           suggestThreshold: config.repair.suggestThreshold,
           aiAdapter: effectiveAiAdapter,
           contextCode,
         });
+        const planDurationMs = Math.round(performance.now() - planStart);
 
-        if (plan.aiTokensUsed) totalAiTokens += plan.aiTokensUsed;
+        if (plan.aiTokensUsed) {
+          totalAiTokens += plan.aiTokensUsed;
+
+          logAiCall(cwd, {
+            timestamp: new Date().toISOString(),
+            failedSelector: failure.selector,
+            failedMethod: failure.method,
+            payloadSizeBytes: Buffer.byteLength(redactedHtml, 'utf-8'),
+            payloadHash: hashPayload(redactedHtml),
+            responseCandidateCount: plan.allCandidates.length,
+            responseTokensUsed: plan.aiTokensUsed,
+            provider: config.ai.provider,
+            model: config.ai.model,
+            redactionPreset: config.redact.preset,
+            durationMs: planDurationMs,
+          });
+        }
 
         plans.push({ plan, sourceCode });
       }
