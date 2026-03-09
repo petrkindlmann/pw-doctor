@@ -3,6 +3,5 @@ dist/
 .pw-doctor/
 *.tsbuildinfo
 .turbo/
-.env
-.env.local
+.env*
 coverage/
