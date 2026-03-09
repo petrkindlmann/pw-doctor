@@ -85,7 +85,7 @@ function getDepth($: cheerio.CheerioAPI, el: AnyNode): number {
   let depth = 0;
   let current: AnyNode | null = el;
   while (current && current.type === 'tag') {
-    const parent = $(current).parent();
+    const parent: cheerio.Cheerio<AnyNode> = $(current).parent();
     if (!parent.length || !parent.prop('tagName')) break;
     const parentTag = (parent.prop('tagName') as string ?? '').toLowerCase();
     if (parentTag === 'html' || parentTag === 'body' || parentTag === '') break;
