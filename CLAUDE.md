@@ -5,13 +5,16 @@ CLI tool + SaaS that detects broken Playwright selectors by running tests to fai
 captures live DOM at the exact failure point, proposes safe fixes via AST patching.
 
 ## Project Status
-Phase 1 COMPLETE. 36 tests passing, clean build, CLI functional.
+Phase 2 COMPLETE. 72 tests passing, clean build, CLI functional with heal loop.
 - `pw-doctor init` — auto-detects project, creates config, scans selectors
 - `pw-doctor check` — extracts selectors via AST, scores fragility, reports
+- `pw-doctor heal` — runs tests, detects broken selectors, proposes/applies fixes (--dry-run default, --apply to patch)
 - PRD_FINAL.md is the single source of truth
 - docs/plans/2026-03-08-security-audit.md has 58 security controls
 - docs/plans/2026-03-09-phase1-cli-foundation.md has the Phase 1 implementation plan
+- docs/plans/2026-03-09-phase2-heal-loop.md has the Phase 2 implementation plan
 - archive/ has superseded planning docs — do not use for decisions
+- Note: heal command passes empty HTML to repair pipeline (no live DOM capture yet) — strategies only work in tests with fixture HTML
 
 ## Key Architecture Decisions
 - Heal loop: run actual test → catch failure → capture DOM → repair → verify (NOT scan live sites independently)
@@ -42,18 +45,19 @@ Phase 1 COMPLETE. 36 tests passing, clean build, CLI functional.
 ## Repo Structure
 ```
 packages/cli/src/bin/         — CLI entry point (pw-doctor.ts)
-packages/cli/src/commands/    — init.ts, check.ts (Phase 2: heal, verify, report)
-packages/cli/src/core/        — selector-extractor.ts, fragility-scorer.ts (Phase 2: ast-patcher, test-runner)
+packages/cli/src/commands/    — init.ts, check.ts, heal.ts
+packages/cli/src/core/        — selector-extractor.ts, fragility-scorer.ts, ast-patcher.ts, test-runner.ts, dom-analyzer.ts
+packages/cli/src/repair/      — text-match.ts, attribute-match.ts, candidate-ranker.ts, backup.ts, repair-pipeline.ts
 packages/cli/src/config/      — loader.ts, defaults.ts, schema.ts
 packages/cli/src/report/      — terminal-reporter.ts, json-reporter.ts
-packages/cli/src/utils/       — safe-exec.ts, safe-path.ts, error-sanitizer.ts, logger.ts
-packages/cli/tests/           — unit tests (utils/, config/, core/, report/) + e2e/
+packages/cli/src/utils/       — safe-exec.ts, safe-path.ts, error-sanitizer.ts, logger.ts, file-finder.ts
+packages/cli/tests/           — unit tests (utils/, config/, core/, repair/, report/) + e2e/
 packages/shared/src/          — types.ts, schemas.ts, constants.ts
 ```
 
 ## Build & Test Commands
 - `npm run build` — builds all packages via Turborepo
-- `cd packages/cli && npx vitest run` — runs all 36 tests
+- `cd packages/cli && npx vitest run` — runs all 72 tests
 - `node packages/cli/dist/bin/pw-doctor.js --help` — run CLI
 
 ## Conventions
