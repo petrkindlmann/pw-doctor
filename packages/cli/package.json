@@ -1,0 +1,55 @@
+{
+  "name": "pw-doctor",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "AI-powered Playwright test selector maintenance",
+  "bin": {
+    "pw-doctor": "./dist/bin/pw-doctor.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "echo ok",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.26.0",
+    "@babel/traverse": "^7.26.0",
+    "@babel/types": "^7.26.0",
+    "@clack/prompts": "^0.10.0",
+    "@pw-doctor/shared": "*",
+    "chalk": "^5.4.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "cosmiconfig": "^9.0.0",
+    "ora": "^8.2.0",
+    "recast": "^0.23.9",
+    "zod": "^3.24.0"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "files": ["dist", "README.md"],
+  "keywords": ["playwright", "testing", "selectors", "self-healing", "ast"],
+  "license": "MIT"
+}

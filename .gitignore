@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.pw-doctor/
+*.tsbuildinfo
+.turbo/
+.env
+.env.local
+coverage/
