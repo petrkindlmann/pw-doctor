@@ -142,7 +142,21 @@ describe('OpenAiAdapter', () => {
       const adapterError = error as AiAdapterError;
       expect(adapterError.isRetryable).toBe(false);
       expect(adapterError.provider).toBe('openai');
-      expect(adapterError.message).toContain('missing candidates array');
+    }
+  });
+
+  it('throws AiAdapterError when candidates have invalid structure', async () => {
+    const badResponse = JSON.stringify({ candidates: [{ selector: 'x' }] });
+    mockCreate.mockResolvedValueOnce(makeApiResponse(badResponse));
+
+    try {
+      await adapter.suggestRepair(SAMPLE_INPUT);
+      expect.fail('Should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AiAdapterError);
+      const adapterError = error as AiAdapterError;
+      expect(adapterError.isRetryable).toBe(false);
+      expect(adapterError.provider).toBe('openai');
     }
   });
 

@@ -27,10 +27,11 @@ export function findCapturedHtml(cwd: string, relativeFile: string, testName: st
   const fileHash = hashString(absoluteFile);
   const testHash = hashString(testName);
   const captureFile = path.join(cwd, PW_DOCTOR_CAPTURES_DIR, `${fileHash}-${testHash}.html`);
-  if (fs.existsSync(captureFile)) {
-    return fs.readFileSync(captureFile, 'utf-8');
+  if (!fs.existsSync(captureFile)) {
+    logger.debug(`No DOM capture found for ${relativeFile} (expected at ${captureFile})`);
+    return undefined;
   }
-  return undefined;
+  return fs.readFileSync(captureFile, 'utf-8');
 }
 
 export function readCodeContext(filePath: string, line: number, contextLines: number = 5): string {
@@ -117,7 +118,7 @@ export function healCommand(): Command {
       }
 
       // Step 1: Run Playwright tests
-      const spinner = ora('Running Playwright tests...').start();
+      const spinner = ora({ text: 'Running Playwright tests...', isSilent: !!options.ci }).start();
 
       const testResult = await runPlaywrightTests(cwd);
       const testResults = parsePlaywrightJsonOutput(testResult.stdout);
@@ -146,6 +147,7 @@ export function healCommand(): Command {
       const plans: Array<{ plan: RepairPlan; sourceCode: string }> = [];
       const maxFiles = options.maxFiles ? parseInt(options.maxFiles, 10) : config.repair.maxFiles;
       let totalAiTokens = 0;
+      let aiCallCount = 0;
 
       for (const failure of failures) {
         if (plans.length >= maxFiles) break;
@@ -159,17 +161,39 @@ export function healCommand(): Command {
         // Find and redact captured HTML
         const capturedHtml = findCapturedHtml(cwd, failure.file, failure.testName);
         const redactedHtml = capturedHtml
-          ? redactHtml(capturedHtml, { preset: config.redact.preset as 'moderate' | 'strict' | 'minimal' }).html
+          ? redactHtml(capturedHtml, {
+              preset: config.redact.preset as 'moderate' | 'strict' | 'minimal',
+              maxDepth: config.redact.maxDepth,
+              maxSize: config.redact.maxSize,
+              stripAttributes: config.redact.stripAttributes,
+              preserveAttributes: config.redact.preserveAttributes,
+              stripSelectors: config.redact.stripSelectors,
+              customPatterns: config.redact.patterns,
+            }).html
           : '';
 
         // Read code context around the failure line
         const contextCode = readCodeContext(filePath, failure.line);
 
+        // Enforce token and call budgets
+        let effectiveAiAdapter = aiAdapter;
+        if (effectiveAiAdapter) {
+          if (aiCallCount >= config.ai.maxCallsPerRun) {
+            logger.warn('AI call budget exceeded — disabling AI for remaining failures');
+            effectiveAiAdapter = undefined;
+          } else if (totalAiTokens >= config.ai.tokenBudgetPerRun) {
+            logger.warn('AI token budget exceeded — disabling AI for remaining failures');
+            effectiveAiAdapter = undefined;
+          } else {
+            aiCallCount++;
+          }
+        }
+
         // Build repair plan with captured DOM and AI
         const plan = await buildRepairPlan(failure, redactedHtml, {
           autoApplyThreshold: minConfidence,
           suggestThreshold: config.repair.suggestThreshold,
-          aiAdapter,
+          aiAdapter: effectiveAiAdapter,
           contextCode,
         });
 
@@ -184,11 +208,13 @@ export function healCommand(): Command {
       const fixableCount = plans.filter((p) => p.plan.bestCandidate).length;
 
       if (fixableCount === 0) {
-        logger.warn('No automatic fixes found. Manual intervention required.');
-        console.log('');
-        for (const { plan } of plans) {
-          console.log(chalk.red(`  ✖ ${plan.failure.file}:${plan.failure.line} — ${plan.failure.selector}`));
-          console.log(chalk.gray(`    No repair candidates found`));
+        if (!options.ci) {
+          logger.warn('No automatic fixes found. Manual intervention required.');
+          console.log('');
+          for (const { plan } of plans) {
+            console.log(chalk.red(`  ✖ ${plan.failure.file}:${plan.failure.line} — ${plan.failure.selector}`));
+            console.log(chalk.gray(`    No repair candidates found`));
+          }
         }
         if (options.ci) {
           emitCiJson({
@@ -204,33 +230,35 @@ export function healCommand(): Command {
         if (!isWatch) process.exit(EXIT_CODES.BROKEN_FOUND);
       }
 
-      console.log('');
-      console.log(chalk.bold(`Proposed fixes (${fixableCount}/${failures.length}):`));
-      console.log('');
-
-      for (const { plan } of plans) {
-        if (!plan.bestCandidate) {
-          console.log(chalk.red(`  ✖ ${plan.failure.file}:${plan.failure.line}`));
-          console.log(chalk.gray(`    ${plan.failure.selector} → no fix found`));
-          continue;
-        }
-
-        const bc = plan.bestCandidate;
-        const confidenceColor =
-          bc.candidate.confidence >= 85
-            ? chalk.green
-            : bc.candidate.confidence >= 50
-              ? chalk.yellow
-              : chalk.red;
-        console.log(chalk.cyan(`  ${plan.failure.file}:${plan.failure.line}`));
-        console.log(
-          `    ${chalk.red(plan.failure.selector)} → ${chalk.green(`${bc.candidate.method}('${bc.candidate.selector}')`)}`,
-        );
-        console.log(
-          `    Confidence: ${confidenceColor(`${bc.candidate.confidence}%`)} | Strategy: ${bc.candidate.strategy}`,
-        );
-        console.log(`    ${chalk.gray(bc.candidate.reasoning)}`);
+      if (!options.ci) {
         console.log('');
+        console.log(chalk.bold(`Proposed fixes (${fixableCount}/${failures.length}):`));
+        console.log('');
+
+        for (const { plan } of plans) {
+          if (!plan.bestCandidate) {
+            console.log(chalk.red(`  ✖ ${plan.failure.file}:${plan.failure.line}`));
+            console.log(chalk.gray(`    ${plan.failure.selector} → no fix found`));
+            continue;
+          }
+
+          const bc = plan.bestCandidate;
+          const confidenceColor =
+            bc.candidate.confidence >= 85
+              ? chalk.green
+              : bc.candidate.confidence >= 50
+                ? chalk.yellow
+                : chalk.red;
+          console.log(chalk.cyan(`  ${plan.failure.file}:${plan.failure.line}`));
+          console.log(
+            `    ${chalk.red(plan.failure.selector)} → ${chalk.green(`${bc.candidate.method}('${bc.candidate.selector}')`)}`,
+          );
+          console.log(
+            `    Confidence: ${confidenceColor(`${bc.candidate.confidence}%`)} | Strategy: ${bc.candidate.strategy}`,
+          );
+          console.log(`    ${chalk.gray(bc.candidate.reasoning)}`);
+          console.log('');
+        }
       }
 
       // Step 4: Interactive mode — prompt for each failure
@@ -310,7 +338,9 @@ export function healCommand(): Command {
 
       // Step 5: Apply fixes if --apply
       if (!shouldApply) {
-        console.log(chalk.gray('Dry run — no changes applied. Use --apply to apply fixes.'));
+        if (!options.ci) {
+          console.log(chalk.gray('Dry run — no changes applied. Use --apply to apply fixes.'));
+        }
         if (options.ci) {
           emitCiJson({
             status: 'broken_found',
@@ -410,13 +440,15 @@ export function healCommand(): Command {
       }
 
       // Summary
-      console.log('');
-      console.log(chalk.bold('Summary:'));
-      console.log(
-        `  ${chalk.green(`${verified} verified`)} | ${chalk.red(`${rolledBackCount} rolled back`)} | ${failures.length - fixableCount} unfixable`,
-      );
-      if (totalAiTokens > 0) {
-        console.log(`  AI tokens used: ${totalAiTokens}`);
+      if (!options.ci) {
+        console.log('');
+        console.log(chalk.bold('Summary:'));
+        console.log(
+          `  ${chalk.green(`${verified} verified`)} | ${chalk.red(`${rolledBackCount} rolled back`)} | ${failures.length - fixableCount} unfixable`,
+        );
+        if (totalAiTokens > 0) {
+          console.log(`  AI tokens used: ${totalAiTokens}`);
+        }
       }
 
       if (options.ci) {

@@ -3,6 +3,7 @@ import type { AiRepairInput, AiRepairResponse } from '@pw-doctor/shared';
 import type { AiRepairAdapter } from './ai-adapter.js';
 import { AiAdapterError } from './ai-adapter.js';
 import { buildRepairPrompt } from './prompt-builder.js';
+import { AiResponseSchema } from './ai-response-schema.js';
 
 export interface AnthropicAdapterOptions {
   apiKey: string;
@@ -45,17 +46,14 @@ export class AnthropicAdapter implements AiRepairAdapter {
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-
-      if (!Array.isArray(parsed.candidates)) {
-        throw new AiAdapterError('AI response missing candidates array', 'anthropic', false);
-      }
+      const validated = AiResponseSchema.parse(parsed);
 
       return {
-        candidates: parsed.candidates.map((c: Record<string, unknown>) => ({
-          selector: String(c.selector),
-          method: String(c.method),
-          confidence: Number(c.confidence),
-          reasoning: String(c.reasoning),
+        candidates: validated.candidates.map((c) => ({
+          selector: c.selector,
+          method: c.method,
+          confidence: c.confidence,
+          reasoning: c.reasoning,
         })),
         tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
         provider: 'anthropic',

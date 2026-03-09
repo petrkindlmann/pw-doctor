@@ -136,6 +136,36 @@ describe('AnthropicAdapter', () => {
     }
   });
 
+  it('throws AiAdapterError when candidates array has invalid structure', async () => {
+    const badResponse = JSON.stringify({ candidates: [{ selector: 'x' }] });
+    mockCreate.mockResolvedValueOnce(makeApiResponse(badResponse));
+
+    try {
+      await adapter.suggestRepair(SAMPLE_INPUT);
+      expect.fail('Should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AiAdapterError);
+      const adapterError = error as AiAdapterError;
+      expect(adapterError.isRetryable).toBe(false);
+      expect(adapterError.provider).toBe('anthropic');
+    }
+  });
+
+  it('throws AiAdapterError when candidates key is missing', async () => {
+    const badResponse = JSON.stringify({ suggestions: [] });
+    mockCreate.mockResolvedValueOnce(makeApiResponse(badResponse));
+
+    try {
+      await adapter.suggestRepair(SAMPLE_INPUT);
+      expect.fail('Should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AiAdapterError);
+      const adapterError = error as AiAdapterError;
+      expect(adapterError.isRetryable).toBe(false);
+      expect(adapterError.provider).toBe('anthropic');
+    }
+  });
+
   it('throws AiAdapterError with isRetryable=true for API 500 error', async () => {
     const apiError = new (Anthropic as unknown as { APIError: new (status: number, body: unknown, message: string) => Error & { status: number } }).APIError(
       500,
