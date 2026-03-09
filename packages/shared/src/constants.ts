@@ -38,3 +38,21 @@ export const CONFIG_FILE_NAMES = [
 
 export const PW_DOCTOR_DIR = '.pw-doctor';
 export const SCHEMA_VERSION = 1;
+
+export const REDACT_SENSITIVE_PATTERNS = [
+  /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+  /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+  /sk-[A-Za-z0-9]{20,}/g,
+  /sk-ant-[A-Za-z0-9-]{20,}/g,
+  /pk_(live|test)_[A-Za-z0-9]{10,}/g,
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+] as const;
+
+export const SELECTOR_RELEVANT_ATTRIBUTES = [
+  'data-testid', 'data-test', 'data-cy',
+  'role', 'aria-label', 'aria-labelledby', 'aria-describedby',
+  'id', 'name', 'class', 'type', 'placeholder', 'alt', 'title',
+  'href', 'for', 'value',
+] as const;
+
+export const PW_DOCTOR_CAPTURES_DIR = '.pw-doctor/captures';

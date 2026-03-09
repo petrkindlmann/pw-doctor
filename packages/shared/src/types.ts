@@ -132,18 +132,44 @@ export interface PwDoctorConfig {
   };
   ai: {
     enabled: boolean;
-    provider: 'anthropic';
+    provider: 'anthropic' | 'openai';
     model: string;
     maxTokens: number;
     maxCallsPerRun: number;
     tokenBudgetPerRun: number;
   };
   redact: {
+    preset: 'moderate' | 'strict' | 'minimal';
     patterns: RegExp[];
     stripAttributes: string[];
+    preserveAttributes: string[];
+    stripSelectors: string[];
+    maxDepth: number;
+    maxSize: number;
   };
   report: {
     format: 'json' | 'html' | 'markdown';
     outputDir: string;
   };
+}
+
+export interface AiRepairInput {
+  failedSelector: string;
+  failedMethod: string;
+  errorMessage: string;
+  filePath: string;
+  line: number;
+  redactedHtml: string;
+  contextCode: string;
+}
+
+export interface AiRepairResponse {
+  candidates: Array<{
+    selector: string;
+    method: string;
+    confidence: number;
+    reasoning: string;
+  }>;
+  tokensUsed: number;
+  provider: 'anthropic' | 'openai';
 }

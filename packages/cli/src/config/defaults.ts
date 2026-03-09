@@ -18,8 +18,13 @@ export const DEFAULT_CONFIG: PwDoctorConfig = {
     tokenBudgetPerRun: 50000,
   },
   redact: {
+    preset: 'moderate',
     patterns: [],
     stripAttributes: ['style', 'onclick', 'onload'],
+    preserveAttributes: [],
+    stripSelectors: [],
+    maxDepth: 20,
+    maxSize: 102400,
   },
   report: {
     format: 'json',

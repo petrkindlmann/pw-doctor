@@ -80,7 +80,7 @@ export const ConfigSchema = z.object({
   ai: z
     .object({
       enabled: z.boolean().default(false),
-      provider: z.literal('anthropic').default('anthropic'),
+      provider: z.enum(['anthropic', 'openai']).default('anthropic'),
       model: z.string().default('claude-sonnet-4-20250514'),
       maxTokens: z.number().default(4096),
       maxCallsPerRun: z.number().default(20),
@@ -89,10 +89,15 @@ export const ConfigSchema = z.object({
     .default({}),
   redact: z
     .object({
+      preset: z.enum(['moderate', 'strict', 'minimal']).default('moderate'),
       patterns: z.array(z.instanceof(RegExp)).default([]),
       stripAttributes: z
         .array(z.string())
         .default(['style', 'onclick', 'onload']),
+      preserveAttributes: z.array(z.string()).default([]),
+      stripSelectors: z.array(z.string()).default([]),
+      maxDepth: z.number().default(20),
+      maxSize: z.number().default(102400),
     })
     .default({}),
   report: z
