@@ -56,6 +56,8 @@ export class AnthropicAdapter implements AiRepairAdapter {
           reasoning: c.reasoning,
         })),
         tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
         provider: 'anthropic',
       };
     } catch (error) {

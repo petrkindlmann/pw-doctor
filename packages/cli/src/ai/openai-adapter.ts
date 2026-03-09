@@ -49,6 +49,8 @@ export class OpenAiAdapter implements AiRepairAdapter {
           reasoning: c.reasoning,
         })),
         tokensUsed: response.usage?.total_tokens ?? 0,
+        inputTokens: response.usage?.prompt_tokens ?? 0,
+        outputTokens: response.usage?.completion_tokens ?? 0,
         provider: 'openai',
       };
     } catch (error) {

@@ -171,5 +171,7 @@ export interface AiRepairResponse {
     reasoning: string;
   }>;
   tokensUsed: number;
+  inputTokens?: number;
+  outputTokens?: number;
   provider: 'anthropic' | 'openai';
 }

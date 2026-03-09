@@ -17,7 +17,7 @@ export async function generateRepairCandidates(
   failure: SelectorFailure,
   html: string,
   options?: GenerateRepairOptions,
-): Promise<{ candidates: RepairCandidate[]; aiTokensUsed?: number }> {
+): Promise<{ candidates: RepairCandidate[]; aiTokensUsed?: number; aiInputTokens?: number; aiOutputTokens?: number }> {
   const analyzer = new DomAnalyzer(html);
   const candidates: RepairCandidate[] = [];
 
@@ -40,6 +40,8 @@ export async function generateRepairCandidates(
 
   // Strategy 3: AI-powered repair (when adapter is provided and HTML is available)
   let aiTokensUsed: number | undefined;
+  let aiInputTokens: number | undefined;
+  let aiOutputTokens: number | undefined;
   if (options?.aiAdapter && html) {
     try {
       const aiResponse = await options.aiAdapter.suggestRepair({
@@ -53,6 +55,8 @@ export async function generateRepairCandidates(
       });
 
       aiTokensUsed = aiResponse.tokensUsed;
+      aiInputTokens = aiResponse.inputTokens;
+      aiOutputTokens = aiResponse.outputTokens;
 
       for (const aiCandidate of aiResponse.candidates) {
         const validation = validateAiSelector(aiCandidate.selector, aiCandidate.method);
@@ -84,7 +88,7 @@ export async function generateRepairCandidates(
     }
   }
 
-  return { candidates, aiTokensUsed };
+  return { candidates, aiTokensUsed, aiInputTokens, aiOutputTokens };
 }
 
 export interface RepairPlan {
@@ -92,6 +96,8 @@ export interface RepairPlan {
   bestCandidate: RankedCandidate | null;
   allCandidates: RankedCandidate[];
   aiTokensUsed?: number;
+  aiInputTokens?: number;
+  aiOutputTokens?: number;
 }
 
 export async function buildRepairPlan(
@@ -99,7 +105,7 @@ export async function buildRepairPlan(
   html: string,
   options?: { autoApplyThreshold?: number; suggestThreshold?: number; aiAdapter?: AiRepairAdapter; contextCode?: string },
 ): Promise<RepairPlan> {
-  const { candidates, aiTokensUsed } = await generateRepairCandidates(failure, html, {
+  const { candidates, aiTokensUsed, aiInputTokens, aiOutputTokens } = await generateRepairCandidates(failure, html, {
     aiAdapter: options?.aiAdapter,
     contextCode: options?.contextCode,
   });
@@ -111,5 +117,7 @@ export async function buildRepairPlan(
     bestCandidate: best,
     allCandidates: ranked,
     aiTokensUsed,
+    aiInputTokens,
+    aiOutputTokens,
   };
 }

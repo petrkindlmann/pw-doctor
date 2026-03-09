@@ -22,6 +22,7 @@ import type { RepairRecord, AiRepairInput } from '@pw-doctor/shared';
 import type { AiRepairAdapter } from '../ai/ai-adapter.js';
 import { hashString } from '../utils/hash.js';
 import { logAiCall, hashPayload } from '../ai/audit-logger.js';
+import { estimateCost } from '../ai/cost-estimator.js';
 import { startWatchMode } from './watch.js';
 import { buildRepairPrompt } from '../ai/prompt-builder.js';
 
@@ -95,6 +96,7 @@ export interface CiJsonOutput {
   rolledBack: number;
   repairs: RepairRecord[];
   aiTokensUsed: number;
+  aiCostCents: number;
 }
 
 function emitCiJson(data: CiJsonOutput, projectRoot: string): void {
@@ -196,6 +198,7 @@ export function healCommand(): Command {
             rolledBack: 0,
             repairs: [],
             aiTokensUsed: 0,
+            aiCostCents: 0,
           }, cwd);
         }
         if (!isWatch) process.exit(EXIT_CODES.HEALTHY);
@@ -252,6 +255,7 @@ export function healCommand(): Command {
       const plans: Array<{ plan: RepairPlan; sourceCode: string }> = [];
       const maxFiles = options.maxFiles ? parseInt(options.maxFiles, 10) : config.repair.maxFiles;
       let totalAiTokens = 0;
+      let totalAiCost = 0;
       let aiCallCount = 0;
 
       for (const failure of failures) {
@@ -307,6 +311,14 @@ export function healCommand(): Command {
         if (plan.aiTokensUsed) {
           totalAiTokens += plan.aiTokensUsed;
 
+          const callCost = estimateCost(
+            config.ai.provider,
+            config.ai.model,
+            plan.aiInputTokens ?? 0,
+            plan.aiOutputTokens ?? 0,
+          );
+          totalAiCost += callCost;
+
           logAiCall(cwd, {
             timestamp: new Date().toISOString(),
             failedSelector: failure.selector,
@@ -348,6 +360,7 @@ export function healCommand(): Command {
             rolledBack: 0,
             repairs: [],
             aiTokensUsed: totalAiTokens,
+            aiCostCents: totalAiCost,
           }, cwd);
         }
         if (!isWatch) process.exit(EXIT_CODES.BROKEN_FOUND);
@@ -473,6 +486,7 @@ export function healCommand(): Command {
             rolledBack: 0,
             repairs: [],
             aiTokensUsed: totalAiTokens,
+            aiCostCents: totalAiCost,
           }, cwd);
         }
         if (!isWatch) process.exit(EXIT_CODES.BROKEN_FOUND);
@@ -529,7 +543,7 @@ export function healCommand(): Command {
           verified++;
           logger.success(`Verified fix for ${plan.failure.file}:${plan.failure.line}`);
 
-          repairs.push({
+          const repairRecord: RepairRecord = {
             filePath: plan.failure.file,
             line: plan.failure.line,
             oldSelector: plan.failure.selector,
@@ -540,14 +554,24 @@ export function healCommand(): Command {
             confidence: bc.confidence,
             reasoning: bc.reasoning,
             status: 'verified',
-          });
+          };
+          if (plan.aiTokensUsed) {
+            repairRecord.aiTokensUsed = plan.aiTokensUsed;
+            repairRecord.aiCostCents = estimateCost(
+              config.ai.provider,
+              config.ai.model,
+              plan.aiInputTokens ?? 0,
+              plan.aiOutputTokens ?? 0,
+            );
+          }
+          repairs.push(repairRecord);
         } else {
           // Rollback
           await rollback(cwd, filePath, runId);
           rolledBackCount++;
           logger.warn(`Fix failed verification — rolled back ${plan.failure.file}:${plan.failure.line}`);
 
-          repairs.push({
+          const repairRecord: RepairRecord = {
             filePath: plan.failure.file,
             line: plan.failure.line,
             oldSelector: plan.failure.selector,
@@ -558,7 +582,17 @@ export function healCommand(): Command {
             confidence: bc.confidence,
             reasoning: bc.reasoning,
             status: 'rolled_back',
-          });
+          };
+          if (plan.aiTokensUsed) {
+            repairRecord.aiTokensUsed = plan.aiTokensUsed;
+            repairRecord.aiCostCents = estimateCost(
+              config.ai.provider,
+              config.ai.model,
+              plan.aiInputTokens ?? 0,
+              plan.aiOutputTokens ?? 0,
+            );
+          }
+          repairs.push(repairRecord);
         }
       }
 
@@ -571,6 +605,7 @@ export function healCommand(): Command {
         );
         if (totalAiTokens > 0) {
           console.log(`  AI tokens used: ${totalAiTokens}`);
+          console.log(`  AI cost: ~$${(totalAiCost / 100).toFixed(2)}`);
         }
       }
 
@@ -588,6 +623,7 @@ export function healCommand(): Command {
           rolledBack: rolledBackCount,
           repairs,
           aiTokensUsed: totalAiTokens,
+          aiCostCents: totalAiCost,
         }, cwd);
       }
 
