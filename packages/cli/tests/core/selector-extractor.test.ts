@@ -30,6 +30,7 @@ describe('extractSelectors', () => {
     expect(signInBtn).toBeDefined();
     expect(signInBtn!.selectorValue).toBe('button');
     expect(signInBtn!.selectorType).toBe('role');
+    expect(signInBtn!.roleOptions).toEqual({ name: 'Sign In' });
 
     // getByTestId
     const dashHeader = selectors.find((s) => s.apiMethod === 'getByTestId');
