@@ -26,7 +26,7 @@ test('login', async ({ page }) => {
     expect(result.patchedCode).toContain("getByRole('button'");
   });
 
-  it('repair pipeline generates candidates from DOM', () => {
+  it('repair pipeline generates candidates from DOM', async () => {
     const html = `
       <button class="btn-submit old-class" data-testid="submit-action" role="button">
         Save Changes
@@ -43,7 +43,7 @@ test('login', async ({ page }) => {
       error: 'Timeout',
     };
 
-    const candidates = generateRepairCandidates(failure, html);
+    const { candidates } = await generateRepairCandidates(failure, html);
     expect(candidates.length).toBeGreaterThan(0);
 
     // Should find data-testid

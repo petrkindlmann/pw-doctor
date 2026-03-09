@@ -69,7 +69,7 @@ export function healCommand(): Command {
         const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
         // Build repair plan (without live DOM for now — Phase 2 MVP)
-        const plan = buildRepairPlan(failure, '', {
+        const plan = await buildRepairPlan(failure, '', {
           autoApplyThreshold: minConfidence,
           suggestThreshold: config.repair.suggestThreshold,
         });
