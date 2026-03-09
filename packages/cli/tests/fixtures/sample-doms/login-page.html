@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head><title>Login</title></head>
+<body>
+  <main>
+    <h1>Welcome Back</h1>
+    <form data-testid="login-form">
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="Enter email" data-testid="email-input" />
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="Enter password" />
+      <button type="submit" class="btn-primary submit-btn" role="button" data-testid="login-submit">
+        Sign In
+      </button>
+      <a href="/forgot" class="forgot-link">Forgot password?</a>
+    </form>
+    <div class="social-login">
+      <button class="btn-google" aria-label="Sign in with Google">Google</button>
+      <button class="btn-github" aria-label="Sign in with GitHub">GitHub</button>
+    </div>
+  </main>
+</body>
+</html>
