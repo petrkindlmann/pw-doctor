@@ -11,25 +11,22 @@ import { buildRepairPlan, type RepairPlan } from '../repair/repair-pipeline.js';
 import { patchSelector } from '../core/ast-patcher.js';
 import { createBackup, rollback } from '../repair/backup.js';
 import { logger, setCIMode } from '../utils/logger.js';
+import { assertWithinRoot } from '../utils/safe-path.js';
 import { EXIT_CODES } from '@pw-doctor/shared';
-import type { RepairRecord, TriggerSource } from '@pw-doctor/shared';
+import type { RepairRecord } from '@pw-doctor/shared';
 
 export function healCommand(): Command {
   return new Command('heal')
     .description('Detect broken selectors and propose fixes')
     .option('--dry-run', 'Show proposed fixes without applying (default)', true)
     .option('--apply', 'Apply fixes meeting confidence threshold')
-    .option('--interactive', 'Confirm each fix interactively')
     .option('--min-confidence <n>', 'Minimum confidence to apply', '85')
     .option('--max-files <n>', 'Maximum files to process')
     .option('--ci', 'CI mode: JSON output, no interactive prompts')
-    .option('--report <format>', 'Output report format (json)')
     .action(async (options) => {
       const cwd = process.cwd();
       const runId = `pwd_${crypto.randomUUID().slice(0, 8)}`;
       if (options.ci) setCIMode(true);
-
-      const _trigger: TriggerSource = options.ci ? 'ci' : 'cli';
 
       // Load config
       let config;
@@ -60,9 +57,13 @@ export function healCommand(): Command {
       // Step 2: For each failure, generate repair plans
       const repairs: RepairRecord[] = [];
       const plans: Array<{ plan: RepairPlan; sourceCode: string }> = [];
+      const maxFiles = options.maxFiles ? parseInt(options.maxFiles, 10) : config.repair.maxFiles;
 
       for (const failure of failures) {
+        if (plans.length >= maxFiles) break;
+
         const filePath = path.resolve(cwd, failure.file);
+        assertWithinRoot(cwd, filePath);
         if (!fs.existsSync(filePath)) continue;
 
         const sourceCode = fs.readFileSync(filePath, 'utf-8');
@@ -140,6 +141,7 @@ export function healCommand(): Command {
         }
 
         const filePath = path.resolve(cwd, plan.failure.file);
+        assertWithinRoot(cwd, filePath);
         const bc = plan.bestCandidate.candidate;
 
         // Backup

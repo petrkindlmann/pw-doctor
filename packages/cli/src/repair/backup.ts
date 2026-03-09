@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { safeExec } from '../utils/safe-exec.js';
+import { assertWithinRoot } from '../utils/safe-path.js';
 import { PW_DOCTOR_DIR } from '@pw-doctor/shared';
 
 export function createBackup(
@@ -8,6 +9,7 @@ export function createBackup(
   filePath: string,
   runId: string,
 ): void {
+  assertWithinRoot(projectRoot, filePath);
   const backupDir = path.join(projectRoot, PW_DOCTOR_DIR, 'backups', runId);
   fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
 
@@ -24,6 +26,7 @@ export function restoreBackup(
   filePath: string,
   runId: string,
 ): boolean {
+  assertWithinRoot(projectRoot, filePath);
   const backupDir = path.join(projectRoot, PW_DOCTOR_DIR, 'backups', runId);
   const relativePath = path.relative(projectRoot, filePath);
   const backupName = relativePath.replace(/[/\\]/g, '__');
@@ -39,6 +42,7 @@ export async function rollbackViaGit(
   projectRoot: string,
   filePath: string,
 ): Promise<boolean> {
+  assertWithinRoot(projectRoot, filePath);
   const relativePath = path.relative(projectRoot, filePath);
   const result = await safeExec('git', ['checkout', '--', relativePath], {
     cwd: projectRoot,
