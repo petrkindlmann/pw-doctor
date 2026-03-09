@@ -14,6 +14,7 @@ import { logger, setCIMode } from '../utils/logger.js';
 import { assertWithinRoot } from '../utils/safe-path.js';
 import { redactHtml } from '../core/dom-redactor.js';
 import { createAiAdapter } from '../ai/create-adapter.js';
+import { promptForCandidate, assertTTY } from '../interactive/prompt.js';
 import { EXIT_CODES, PW_DOCTOR_CAPTURES_DIR } from '@pw-doctor/shared';
 import type { RepairRecord } from '@pw-doctor/shared';
 import type { AiRepairAdapter } from '../ai/ai-adapter.js';
@@ -50,6 +51,7 @@ export function healCommand(): Command {
     .option('--min-confidence <n>', 'Minimum confidence to apply', '85')
     .option('--max-files <n>', 'Maximum files to process')
     .option('--ci', 'CI mode: JSON output, no interactive prompts')
+    .option('--interactive', 'Interactively approve/edit/skip each fix')
     .option('--no-ai', 'Disable AI repair even if configured')
     .action(async (options) => {
       const cwd = process.cwd();
@@ -67,6 +69,12 @@ export function healCommand(): Command {
 
       const minConfidence = parseInt(options.minConfidence, 10) || config.repair.autoApplyThreshold;
       const shouldApply = options.apply === true;
+      const isInteractive = options.interactive === true;
+
+      // Interactive mode requires a TTY
+      if (isInteractive) {
+        assertTTY();
+      }
 
       // Create AI adapter if configured and not disabled
       let aiAdapter: AiRepairAdapter | undefined;
@@ -177,7 +185,82 @@ export function healCommand(): Command {
         console.log('');
       }
 
-      // Step 4: Apply fixes if --apply
+      // Step 4: Interactive mode — prompt for each failure
+      if (isInteractive) {
+        let applied = 0;
+        let skipped = 0;
+
+        for (const { plan, sourceCode } of plans) {
+          if (plan.allCandidates.length === 0) {
+            console.log(chalk.red(`  No candidates for ${plan.failure.file}:${plan.failure.line} — skipping`));
+            skipped++;
+            continue;
+          }
+
+          const choice = await promptForCandidate(
+            { file: plan.failure.file, line: plan.failure.line, selector: plan.failure.selector },
+            plan.allCandidates,
+          );
+
+          if (choice.action === 'quit') {
+            console.log(chalk.gray('  Quitting interactive mode.'));
+            break;
+          }
+
+          if (choice.action === 'skip') {
+            skipped++;
+            continue;
+          }
+
+          // Determine selector and method to apply
+          let newSelector: string;
+          let newMethod: string | undefined;
+
+          if (choice.action === 'apply') {
+            newSelector = choice.candidate.candidate.selector;
+            const candidateMethod = choice.candidate.candidate.method;
+            newMethod = candidateMethod !== plan.failure.method ? candidateMethod : undefined;
+          } else {
+            // edit
+            newSelector = choice.selector;
+            newMethod = choice.method !== plan.failure.method ? choice.method : undefined;
+          }
+
+          const filePath = path.resolve(cwd, plan.failure.file);
+          assertWithinRoot(cwd, filePath);
+
+          createBackup(cwd, filePath, runId);
+
+          const patchResult = patchSelector(
+            sourceCode,
+            plan.failure.line,
+            plan.failure.selector,
+            newSelector,
+            newMethod,
+          );
+
+          if (!patchResult.patched) {
+            logger.warn(`Could not patch ${plan.failure.file}:${plan.failure.line}`);
+            continue;
+          }
+
+          fs.writeFileSync(filePath, patchResult.patchedCode, { mode: 0o600 });
+          logger.info(`Patched ${plan.failure.file}:${plan.failure.line}`);
+          applied++;
+        }
+
+        console.log('');
+        console.log(chalk.bold('Interactive summary:'));
+        console.log(`  ${chalk.green(`${applied} applied`)} | ${chalk.gray(`${skipped} skipped`)}`);
+
+        if (applied > 0) {
+          process.exit(EXIT_CODES.FIXES_APPLIED);
+        } else {
+          process.exit(EXIT_CODES.BROKEN_FOUND);
+        }
+      }
+
+      // Step 5: Apply fixes if --apply
       if (!shouldApply) {
         console.log(chalk.gray('Dry run — no changes applied. Use --apply to apply fixes.'));
         process.exit(EXIT_CODES.BROKEN_FOUND);
