@@ -1,4 +1,4 @@
-import { safeExec } from '../utils/safe-exec.js';
+import { safeExec, type ExecResult } from '../utils/safe-exec.js';
 
 export interface TestResult {
   testName: string;
@@ -27,7 +27,7 @@ export async function runPlaywrightTests(
     timeout?: number;
     retries?: number;
   },
-): Promise<{ stdout: string; exitCode: number }> {
+): Promise<ExecResult> {
   const args = ['playwright', 'test', '--reporter=json', '--retries=0'];
 
   if (options?.testFile) {
@@ -45,7 +45,7 @@ export async function runPlaywrightTests(
 
   return safeExec('npx', args, {
     cwd: projectRoot,
-    timeout: options?.timeout ?? 120000,
+    timeout: 120000,
   });
 }
 
@@ -124,7 +124,7 @@ export function extractFailedSelectors(results: TestResult[]): SelectorFailure[]
     let column = 0;
 
     if (result.errorStack) {
-      const stackMatch = result.errorStack.match(/at .*?([^\s/]+\.spec\.ts):(\d+):(\d+)/);
+      const stackMatch = result.errorStack.match(/at .*?([^\s/]+\.(?:spec|test)\.ts):(\d+):(\d+)/);
       if (stackMatch) {
         file = result.file || stackMatch[1];
         line = parseInt(stackMatch[2], 10);
