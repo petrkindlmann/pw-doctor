@@ -17,10 +17,7 @@ import { createAiAdapter } from '../ai/create-adapter.js';
 import { EXIT_CODES, PW_DOCTOR_CAPTURES_DIR } from '@pw-doctor/shared';
 import type { RepairRecord } from '@pw-doctor/shared';
 import type { AiRepairAdapter } from '../ai/ai-adapter.js';
-
-function hashString(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 12);
-}
+import { hashString } from '../utils/hash.js';
 
 export function findCapturedHtml(cwd: string, relativeFile: string, testName: string): string | undefined {
   const absoluteFile = path.resolve(cwd, relativeFile);
@@ -121,13 +118,14 @@ export function healCommand(): Command {
           : '';
 
         // Read code context around the failure line
-        const _contextCode = readCodeContext(filePath, failure.line);
+        const contextCode = readCodeContext(filePath, failure.line);
 
         // Build repair plan with captured DOM and AI
         const plan = await buildRepairPlan(failure, redactedHtml, {
           autoApplyThreshold: minConfidence,
           suggestThreshold: config.repair.suggestThreshold,
           aiAdapter,
+          contextCode,
         });
 
         if (plan.aiTokensUsed) totalAiTokens += plan.aiTokensUsed;

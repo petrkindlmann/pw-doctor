@@ -2,12 +2,8 @@
 import type { Reporter, TestCase, TestResult } from '@playwright/test/reporter';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { PW_DOCTOR_CAPTURES_DIR } from '@pw-doctor/shared';
-
-function hashString(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 12);
-}
+import { hashString } from '../utils/hash.js';
 
 class PwDoctorReporter implements Reporter {
   private outputDir: string;

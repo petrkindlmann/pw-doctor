@@ -8,6 +8,7 @@ import { rankCandidates, selectBestCandidate, type RankedCandidate } from './can
 
 export interface GenerateRepairOptions {
   aiAdapter?: AiRepairAdapter;
+  contextCode?: string;
 }
 
 export async function generateRepairCandidates(
@@ -46,7 +47,7 @@ export async function generateRepairCandidates(
         filePath: failure.file,
         line: failure.line,
         redactedHtml: html,
-        contextCode: '',
+        contextCode: options?.contextCode ?? '',
       });
 
       aiTokensUsed = aiResponse.tokensUsed;
@@ -85,10 +86,11 @@ export interface RepairPlan {
 export async function buildRepairPlan(
   failure: SelectorFailure,
   html: string,
-  options?: { autoApplyThreshold?: number; suggestThreshold?: number; aiAdapter?: AiRepairAdapter },
+  options?: { autoApplyThreshold?: number; suggestThreshold?: number; aiAdapter?: AiRepairAdapter; contextCode?: string },
 ): Promise<RepairPlan> {
   const { candidates, aiTokensUsed } = await generateRepairCandidates(failure, html, {
     aiAdapter: options?.aiAdapter,
+    contextCode: options?.contextCode,
   });
   const ranked = rankCandidates(candidates, options);
   const best = selectBestCandidate(candidates, options);
