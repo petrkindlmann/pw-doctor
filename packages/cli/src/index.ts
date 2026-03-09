@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { initCommand } from './commands/init.js';
 import { checkCommand } from './commands/check.js';
+import { healCommand } from './commands/heal.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -12,6 +13,7 @@ export function createProgram(): Command {
 
   program.addCommand(initCommand());
   program.addCommand(checkCommand());
+  program.addCommand(healCommand());
 
   return program;
 }
