@@ -34,7 +34,9 @@ export class DomAnalyzer {
 
   findByAttribute(attr: string, value: string): DomElement[] {
     const results: DomElement[] = [];
-    this.$(`[${attr}="${value}"]`).each((_, el) => {
+    this.$('*').filter((_, el) => {
+      return this.$(el).attr(attr) === value;
+    }).each((_, el) => {
       results.push(this.toElement(this.$(el)));
     });
     return results;
@@ -63,7 +65,10 @@ export class DomAnalyzer {
   findSimilarByClasses(classes: string[]): DomElement[] {
     const results: DomElement[] = [];
     for (const cls of classes) {
-      this.$(`.${cls}`).each((_, el) => {
+      this.$('*').filter((_, el) => {
+        const classAttr = this.$(el).attr('class') ?? '';
+        return classAttr.split(/\s+/).includes(cls);
+      }).each((_, el) => {
         const domEl = this.toElement(this.$(el));
         if (!results.some((r) => r.cssPath === domEl.cssPath)) {
           results.push(domEl);
@@ -105,7 +110,7 @@ export class DomAnalyzer {
       tag,
       text,
       attributes,
-      isVisible: isVisible !== false,
+      isVisible,
       isUnique,
       cssPath: this.buildCssPath($el),
     };
