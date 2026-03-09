@@ -19,10 +19,11 @@ describe('tryTextMatch', () => {
       contextCode: "await page.locator('.submit-btn').click();",
       analyzer,
     });
-    // The button with text "Sign In" should be found since .submit-btn is on that element
+    // The button with text "Sign In" should be found via getByText since .submit-btn is on that element
     expect(candidate).not.toBeNull();
     if (candidate) {
-      expect(candidate.confidence).toBeGreaterThan(0);
+      expect(candidate.method).toBe('getByText');
+      expect(candidate.selector).toBe('Sign In');
       expect(candidate.strategy).toBe('text_match');
     }
   });

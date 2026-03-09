@@ -27,30 +27,12 @@ export function tryTextMatch(input: TextMatchInput): RepairCandidate | null {
   const textMatches = analyzer.findByText(text);
   const isUnique = textMatches.length === 1;
 
-  // 4. Prefer data-testid if available
-  if (target.attributes['data-testid']) {
-    return {
-      selector: target.attributes['data-testid'],
-      method: 'getByTestId',
-      confidence: computeTextMatchConfidence(target, isUnique, true),
-      strategy: 'text_match',
-      reasoning: `Found element with text "${text}" that has data-testid="${target.attributes['data-testid']}"`,
-      elementMatch: {
-        tag: target.tag,
-        text,
-        attributes: target.attributes,
-        isVisible: target.isVisible,
-        isUnique,
-      },
-    };
-  }
-
-  // 5. Use getByText if text is unique
+  // 4. Use getByText if text is unique
   if (isUnique && text.length <= 30) {
     return {
       selector: text,
       method: 'getByText',
-      confidence: computeTextMatchConfidence(target, isUnique, false),
+      confidence: computeTextMatchConfidence(target, isUnique),
       strategy: 'text_match',
       reasoning: `Found unique element with text "${text}"`,
       elementMatch: {
@@ -69,11 +51,9 @@ export function tryTextMatch(input: TextMatchInput): RepairCandidate | null {
 function computeTextMatchConfidence(
   element: { isVisible: boolean; attributes: Record<string, string> },
   isUnique: boolean,
-  hasTestId: boolean,
 ): number {
   let confidence = 50;
 
-  if (hasTestId) confidence += 20;
   if (isUnique) confidence += 20;
   else confidence -= 15;
   if (element.isVisible) confidence += 10;

@@ -41,10 +41,11 @@ export function tryAttributeMatch(input: AttributeMatchInput): RepairCandidate |
   // 3. Check for role attribute
   if (target.attributes['role']) {
     const role = target.attributes['role'];
+    const isUnique = analyzer.findByAttribute('role', role).length === 1;
     return {
       selector: role,
       method: 'getByRole',
-      confidence: computeAttrConfidence(false, target.isVisible, 'role'),
+      confidence: computeAttrConfidence(isUnique, target.isVisible, 'role'),
       strategy: 'attribute_match',
       reasoning: `Element has role="${role}"`,
       elementMatch: {
@@ -52,7 +53,7 @@ export function tryAttributeMatch(input: AttributeMatchInput): RepairCandidate |
         text,
         attributes: target.attributes,
         isVisible: target.isVisible,
-        isUnique: false,
+        isUnique,
       },
     };
   }
