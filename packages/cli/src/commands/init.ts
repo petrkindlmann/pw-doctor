@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import { logger } from '../utils/logger.js';
+import { findTestFiles } from '../utils/file-finder.js';
 import { extractSelectors } from '../core/selector-extractor.js';
 import { enrichWithFragility } from '../core/fragility-scorer.js';
 import { PW_DOCTOR_DIR, CONFIG_FILE_NAMES, EXIT_CODES } from '@pw-doctor/shared';
@@ -67,7 +68,7 @@ export function initCommand(): Command {
       // 7. Scan for selectors
       const testDirAbs = path.resolve(cwd, testDir);
       if (fs.existsSync(testDirAbs)) {
-        const testFiles = findTestFiles(testDirAbs);
+        const testFiles = findTestFiles(testDirAbs, '**/*.spec.ts');
         let allSelectors: ReturnType<typeof extractSelectors> = [];
         for (const file of testFiles) {
           try {
@@ -134,20 +135,4 @@ function ensureGitignore(cwd: string): void {
       logger.success('Added .pw-doctor/ to .gitignore');
     }
   }
-}
-
-function findTestFiles(dir: string): string[] {
-  const files: string[] = [];
-  const walk = (d: string) => {
-    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
-      const full = path.join(d, entry.name);
-      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
-        walk(full);
-      } else if (entry.isFile() && entry.name.endsWith('.spec.ts')) {
-        files.push(full);
-      }
-    }
-  };
-  walk(dir);
-  return files;
 }

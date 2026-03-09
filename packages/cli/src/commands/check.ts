@@ -8,6 +8,7 @@ import { enrichWithFragility } from '../core/fragility-scorer.js';
 import { formatCheckResults } from '../report/terminal-reporter.js';
 import { buildJsonReport } from '../report/json-reporter.js';
 import { logger, setCIMode } from '../utils/logger.js';
+import { findTestFiles } from '../utils/file-finder.js';
 import { EXIT_CODES, PW_DOCTOR_DIR } from '@pw-doctor/shared';
 import type { CheckResult, TriggerSource } from '@pw-doctor/shared';
 
@@ -125,30 +126,4 @@ export function checkCommand(): Command {
       }
       process.exit(EXIT_CODES.HEALTHY);
     });
-}
-
-function findTestFiles(dir: string, pattern: string): string[] {
-  const files: string[] = [];
-  const matchSuffix = pattern.includes('.spec.ts')
-    ? '.spec.ts'
-    : pattern.includes('.test.ts')
-      ? '.test.ts'
-      : '.spec.ts';
-
-  const walk = (d: string) => {
-    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
-      const full = path.join(d, entry.name);
-      if (
-        entry.isDirectory() &&
-        !entry.name.startsWith('.') &&
-        entry.name !== 'node_modules'
-      ) {
-        walk(full);
-      } else if (entry.isFile() && entry.name.endsWith(matchSuffix)) {
-        files.push(full);
-      }
-    }
-  };
-  walk(dir);
-  return files;
 }
