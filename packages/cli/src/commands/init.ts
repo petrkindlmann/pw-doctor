@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import { logger } from '../utils/logger.js';
 import { extractSelectors } from '../core/selector-extractor.js';
 import { enrichWithFragility } from '../core/fragility-scorer.js';
-import { PW_DOCTOR_DIR, CONFIG_FILE_NAMES } from '@pw-doctor/shared';
+import { PW_DOCTOR_DIR, CONFIG_FILE_NAMES, EXIT_CODES } from '@pw-doctor/shared';
 
 export function initCommand(): Command {
   return new Command('init')
@@ -19,7 +19,7 @@ export function initCommand(): Command {
         logger.error(
           'No playwright.config.{ts,js,mjs} found. Are you in a Playwright project?',
         );
-        process.exit(2);
+        process.exit(EXIT_CODES.TOOL_ERROR);
       }
       logger.success(`Found Playwright config: ${path.relative(cwd, playwrightConfig)}`);
 
