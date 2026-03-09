@@ -15,6 +15,7 @@ import { assertWithinRoot } from '../utils/safe-path.js';
 import { sanitizeOutput } from '../utils/error-sanitizer.js';
 import { redactHtml } from '../core/dom-redactor.js';
 import { createAiAdapter } from '../ai/create-adapter.js';
+import { checkAiConsent, recordAiConsent, promptForAiConsent } from '../ai/consent-gate.js';
 import { promptForCandidate, assertTTY } from '../interactive/prompt.js';
 import { EXIT_CODES, PW_DOCTOR_CAPTURES_DIR } from '@pw-doctor/shared';
 import type { RepairRecord } from '@pw-doctor/shared';
@@ -107,14 +108,33 @@ export function healCommand(): Command {
       // Create AI adapter if configured and not disabled
       let aiAdapter: AiRepairAdapter | undefined;
       if (config.ai.enabled && options.ai !== false) {
-        try {
-          aiAdapter = createAiAdapter({
-            provider: config.ai.provider,
-            model: config.ai.model,
-            maxTokens: config.ai.maxTokens,
-          });
-        } catch (err) {
-          logger.warn(`AI repair disabled: ${err instanceof Error ? err.message : String(err)}`);
+        // Check AI consent before proceeding
+        let hasConsent = checkAiConsent();
+
+        if (!hasConsent) {
+          if (process.stdout.isTTY && !options.ci) {
+            const consented = await promptForAiConsent();
+            if (consented) {
+              recordAiConsent();
+              hasConsent = true;
+            } else {
+              logger.warn('AI consent declined — AI repair disabled for this run.');
+            }
+          } else {
+            logger.warn('AI consent not recorded. Run `pw-doctor heal --interactive` first to provide consent.');
+          }
+        }
+
+        if (hasConsent) {
+          try {
+            aiAdapter = createAiAdapter({
+              provider: config.ai.provider,
+              model: config.ai.model,
+              maxTokens: config.ai.maxTokens,
+            });
+          } catch (err) {
+            logger.warn(`AI repair disabled: ${err instanceof Error ? err.message : String(err)}`);
+          }
         }
       }
 
