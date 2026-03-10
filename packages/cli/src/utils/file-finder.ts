@@ -1,7 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { assertWithinRoot } from './safe-path.js';
 
-export function findTestFiles(dir: string, pattern: string): string[] {
+export function findTestFiles(dir: string, pattern: string, projectRoot?: string): string[] {
+  const resolvedDir = path.resolve(dir);
+
+  // If a project root is provided, validate the directory is within it
+  if (projectRoot) {
+    assertWithinRoot(projectRoot, resolvedDir);
+  }
+
   const files: string[] = [];
   const matchSuffix = pattern.includes('.spec.ts')
     ? '.spec.ts'
@@ -23,6 +31,6 @@ export function findTestFiles(dir: string, pattern: string): string[] {
       }
     }
   };
-  walk(dir);
+  walk(resolvedDir);
   return files;
 }

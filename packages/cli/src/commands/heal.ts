@@ -122,6 +122,18 @@ export function healCommand(): Command {
       const runId = `pwd_${crypto.randomUUID().slice(0, 8)}`;
       if (options.ci) setCIMode(true);
 
+      // Check that we're in a Playwright project
+      const playwrightConfigNames = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs'];
+      const hasPlaywrightConfig = playwrightConfigNames.some((name) => fs.existsSync(path.join(cwd, name)));
+      const capturesDir = path.join(cwd, PW_DOCTOR_CAPTURES_DIR);
+      const hasCapturedFiles = fs.existsSync(capturesDir) &&
+        fs.readdirSync(capturesDir).some((f) => f.endsWith('.html'));
+
+      if (!hasPlaywrightConfig && !hasCapturedFiles) {
+        logger.error('No Playwright config or captures found. Are you in a Playwright project?');
+        process.exit(EXIT_CODES.TOOL_ERROR);
+      }
+
       // Load config
       let config;
       try {
@@ -131,7 +143,21 @@ export function healCommand(): Command {
         process.exit(EXIT_CODES.TOOL_ERROR);
       }
 
-      const minConfidence = parseInt(options.minConfidence, 10) || config.repair.autoApplyThreshold;
+      // Validate numeric flags
+      const parsedMinConfidence = parseInt(options.minConfidence, 10);
+      if (isNaN(parsedMinConfidence) || parsedMinConfidence < 0 || parsedMinConfidence > 100) {
+        logger.error('--min-confidence must be a number between 0 and 100');
+        process.exit(EXIT_CODES.TOOL_ERROR);
+      }
+      const minConfidence = parsedMinConfidence || config.repair.autoApplyThreshold;
+
+      if (options.maxFiles !== undefined) {
+        const parsedMaxFiles = parseInt(options.maxFiles, 10);
+        if (isNaN(parsedMaxFiles) || parsedMaxFiles < 1 || !Number.isInteger(parsedMaxFiles)) {
+          logger.error('--max-files must be a positive integer');
+          process.exit(EXIT_CODES.TOOL_ERROR);
+        }
+      }
       const shouldApply = options.apply === true;
       const isInteractive = options.interactive === true;
       const isWatch = options.watch === true;
@@ -293,8 +319,6 @@ export function healCommand(): Command {
           } else if (totalAiTokens >= config.ai.tokenBudgetPerRun) {
             logger.warn('AI token budget exceeded — disabling AI for remaining failures');
             effectiveAiAdapter = undefined;
-          } else {
-            aiCallCount++;
           }
         }
 
@@ -309,6 +333,7 @@ export function healCommand(): Command {
         const planDurationMs = Math.round(performance.now() - planStart);
 
         if (plan.aiTokensUsed) {
+          aiCallCount++;
           totalAiTokens += plan.aiTokensUsed;
 
           const callCost = estimateCost(
@@ -402,6 +427,9 @@ export function healCommand(): Command {
         let applied = 0;
         let skipped = 0;
 
+        // Track current file contents to handle multiple patches to the same file
+        const interactiveFileContents = new Map<string, string>();
+
         for (const { plan, sourceCode } of plans) {
           if (plan.allCandidates.length === 0) {
             console.log(chalk.red(`  No candidates for ${plan.failure.file}:${plan.failure.line} — skipping`));
@@ -441,10 +469,13 @@ export function healCommand(): Command {
           const filePath = path.resolve(cwd, plan.failure.file);
           assertWithinRoot(cwd, filePath);
 
+          // Use the latest file content (re-read after previous patches to the same file)
+          const currentSource = interactiveFileContents.get(filePath) ?? sourceCode;
+
           createBackup(cwd, filePath, runId);
 
           const patchResult = patchSelector(
-            sourceCode,
+            currentSource,
             plan.failure.line,
             plan.failure.selector,
             newSelector,
@@ -457,6 +488,8 @@ export function healCommand(): Command {
           }
 
           fs.writeFileSync(filePath, patchResult.patchedCode, { mode: 0o600 });
+          // Update cached content so subsequent patches to the same file use fresh code
+          interactiveFileContents.set(filePath, patchResult.patchedCode);
           logger.info(`Patched ${plan.failure.file}:${plan.failure.line}`);
           applied++;
         }
@@ -496,6 +529,9 @@ export function healCommand(): Command {
       let verified = 0;
       let rolledBackCount = 0;
 
+      // Track current file contents to handle multiple patches to the same file
+      const currentFileContents = new Map<string, string>();
+
       for (const { plan, sourceCode } of plans) {
         if (!plan.bestCandidate) continue;
         if (plan.bestCandidate.candidate.confidence < minConfidence) {
@@ -509,12 +545,15 @@ export function healCommand(): Command {
         assertWithinRoot(cwd, filePath);
         const bc = plan.bestCandidate.candidate;
 
+        // Use the latest file content (re-read after previous patches to the same file)
+        const currentSource = currentFileContents.get(filePath) ?? sourceCode;
+
         // Backup
         createBackup(cwd, filePath, runId);
 
         // Patch
         const patchResult = patchSelector(
-          sourceCode,
+          currentSource,
           plan.failure.line,
           plan.failure.selector,
           bc.selector,
@@ -527,6 +566,8 @@ export function healCommand(): Command {
         }
 
         fs.writeFileSync(filePath, patchResult.patchedCode, { mode: 0o600 });
+        // Update cached content so subsequent patches to the same file use fresh code
+        currentFileContents.set(filePath, patchResult.patchedCode);
         logger.info(`Patched ${plan.failure.file}:${plan.failure.line}`);
 
         // Verify by re-running the specific test

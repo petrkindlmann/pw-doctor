@@ -130,7 +130,7 @@ export class DomAnalyzer {
         break;
       }
 
-      // Include nth-child index for disambiguation of same-tag siblings
+      // Include nth-of-type index for disambiguation of same-tag siblings
       const parent = current.parent();
       if (parent.length) {
         const siblings = parent.children(tag);
@@ -139,7 +139,7 @@ export class DomAnalyzer {
           siblings.each((i, sib) => {
             if (sib === current.get(0)) index = i + 1;
           });
-          parts.unshift(`${tag}:nth-child(${index})`);
+          parts.unshift(`${tag}:nth-of-type(${index})`);
         } else {
           parts.unshift(tag);
         }

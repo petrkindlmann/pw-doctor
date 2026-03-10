@@ -357,6 +357,12 @@ export function reportCommand(): Command {
 
       const historyDir = path.join(cwd, PW_DOCTOR_DIR, 'history', 'runs');
       const runs = loadRunHistory(historyDir, last);
+
+      if (runs.length === 0) {
+        console.log('No run history found. Run `pw-doctor heal` first.');
+        process.exit(0);
+      }
+
       const report = aggregateRuns(runs);
 
       let content: string;

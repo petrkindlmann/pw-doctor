@@ -44,7 +44,7 @@ export function checkCommand(): Command {
 
       const spinner = ora('Scanning test files...').start();
 
-      const testFiles = findTestFiles(testDirAbs, config.testMatch);
+      const testFiles = findTestFiles(testDirAbs, config.testMatch, cwd);
       if (testFiles.length === 0) {
         spinner.warn('No test files found');
         process.exit(EXIT_CODES.HEALTHY);

@@ -162,11 +162,22 @@ function detectTestDir(cwd: string): string {
 
 function ensureGitignore(cwd: string): void {
   const gitignorePath = path.join(cwd, '.gitignore');
-  if (fs.existsSync(gitignorePath)) {
-    const content = fs.readFileSync(gitignorePath, 'utf-8');
-    if (!content.includes('.pw-doctor')) {
-      fs.appendFileSync(gitignorePath, '\n# PW-Doctor\n.pw-doctor/\n');
-      logger.success('Added .pw-doctor/ to .gitignore');
+  try {
+    if (fs.existsSync(gitignorePath)) {
+      const content = fs.readFileSync(gitignorePath, 'utf-8');
+      if (!content.includes('.pw-doctor')) {
+        fs.appendFileSync(gitignorePath, '\n# PW-Doctor\n.pw-doctor/\n');
+        logger.success('Added .pw-doctor/ to .gitignore');
+      }
+    } else {
+      fs.writeFileSync(gitignorePath, '# PW-Doctor\n.pw-doctor/\n');
+      logger.success('Created .gitignore with .pw-doctor/ entry');
+    }
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && err.code === 'EACCES') {
+      logger.warn('Permission denied: could not write .gitignore');
+    } else {
+      throw err;
     }
   }
 }
