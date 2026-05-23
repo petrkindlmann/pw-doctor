@@ -105,8 +105,12 @@ AI is disabled until you accept the consent gate on first run.
 | `3` | Fixes applied and verified |
 | `4` | Fixes applied but failed verification (rolled back) |
 
-## Project
+## Docs
 
+- [docs/PRD.md](docs/PRD.md) — what we're building and why
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module map and data flow
+- [SECURITY.md](SECURITY.md) — threat model, control catalogue, disclosure policy
+- [CHANGELOG.md](CHANGELOG.md) — version history
 - [CONTRIBUTING.md](CONTRIBUTING.md) — setup, tests, conventions
 - [TODO.md](TODO.md) — known follow-ups
 - Issues: <https://github.com/petrkindlmann/pw-doctor/issues>

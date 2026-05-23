@@ -22,5 +22,8 @@ coverage/
 # Tooling caches
 .playwright-mcp/
 
+# Recovered/scratch docs (kept local for reference)
+.archive/
+
 # Screenshots, scratch artifacts
 *.png

@@ -40,7 +40,7 @@ packages/cli/src/
   utils/        safe-exec, safe-path, error-sanitizer, hash, gitleaks-hook
 ```
 
-Full architecture: [CLAUDE.md](CLAUDE.md).
+Full architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Agent-oriented summary: [CLAUDE.md](CLAUDE.md).
 
 ## Conventions
 
@@ -51,7 +51,7 @@ Full architecture: [CLAUDE.md](CLAUDE.md).
 - Canonicalize every path and verify it lives inside the project root before any write
 - Secrets via env vars only (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`)
 
-The full non-negotiable list is in [CLAUDE.md](CLAUDE.md#non-negotiable-rules). Skim it before touching `src/ai/`, `src/core/ast-patcher.ts`, or anything in `src/utils/safe-*`.
+The full control catalogue lives in [SECURITY.md](SECURITY.md) and the non-negotiable rules in [CLAUDE.md](CLAUDE.md#non-negotiable-rules). Skim both before touching `src/ai/`, `src/core/ast-patcher.ts`, or anything in `src/utils/safe-*`.
 
 ## Pull requests
 

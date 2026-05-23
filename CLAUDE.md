@@ -101,6 +101,15 @@ cd packages/cli && npx tsc --noEmit && npx vitest run
 | Redaction | `src/core/dom-redactor.ts` + `src/utils/error-sanitizer.ts` |
 | New CLI flag | `src/commands/<cmd>.ts` + `bin/pw-doctor.ts` |
 
-## Known follow-ups
+## Related docs
 
-See [TODO.md](TODO.md).
+| Topic | File |
+|---|---|
+| Product framing, scope, non-goals | [docs/PRD.md](docs/PRD.md) |
+| Module map + heal pipeline | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Threat model + full control catalogue (C1, C2, C5, C7, CC) | [SECURITY.md](SECURITY.md) |
+| Version history | [CHANGELOG.md](CHANGELOG.md) |
+| Contributor setup | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Known follow-ups | [TODO.md](TODO.md) |
+
+The original (pre-public) PRD and phase plans were recovered to `.archive/recovered/` (gitignored). Useful for historical context; **the canonical docs are now `docs/` + `SECURITY.md`**.

@@ -34,9 +34,10 @@ Known follow-ups. Pulled from recent commits and post-Phase-3 state. Move items 
 ## Docs / repo
 
 - [ ] **Examples directory.** Show a realistic Playwright project before/after a heal.
-- [ ] **CHANGELOG.md.** None yet. Generate from conventional commits once CI is in.
+- [x] ~~**CHANGELOG.md.**~~ Seeded — automate via conventional commits when CI lands.
+- [x] ~~**SECURITY.md.**~~ Disclosure policy + full control catalogue shipped.
 - [ ] **`packages/cli/README.md`** is the npm-facing readme — keep it in sync with root README on each release.
-- [ ] **SECURITY.md.** Short disclosure policy + supported versions.
+- [ ] **`ai.model` default.** Config points at `claude-sonnet-4-20250514`; bump to `claude-sonnet-4-6` and consider exposing a single source-of-truth constant in `@pw-doctor/shared`.
 
 ## Tech debt
 
