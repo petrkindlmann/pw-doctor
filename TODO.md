@@ -10,6 +10,16 @@ Known follow-ups. Pulled from recent commits and post-Phase-3 state. Move items 
 - [ ] **Coverage gate.** Vitest is in; no coverage threshold enforced.
 - [ ] **Confirm Phase 3 follow-ups.** The "Fix 12 bugs found by exploratory testing" commit closed a wave — diff it against any open notes to make sure nothing leaked.
 
+## From the May 2026 Codex doc review
+
+- [ ] **Heal writes `RunHistory`.** Currently only `check` writes; `report` therefore surfaces check-runs only. Adding heal-side persistence will let `report` show repair history.
+- [ ] **AI fallback ladder.** Today AI runs in parallel with heuristics whenever an adapter + DOM exist. Short-circuit before the AI call when a heuristic already clears `autoApplyThreshold` to cut cost.
+- [ ] **AI gate completeness.** Selector validator does not block `${}` template-literal escapes and does not parse the selector as a Playwright locator expression. Add both.
+- [ ] **Tag/role compatibility in DOM hard gate.** Current gate only checks "exactly 1 visible". Confirm the matched element's tag/role is compatible with the original action (e.g. `click` → interactive element).
+- [ ] **Reporter auto-wiring in `init`.** Today `init` only prints instructions. Consider an opt-in `--write-config` that edits `playwright.config.ts` via AST.
+- [ ] **`watch` as a top-level command.** Either register `pw-doctor watch` with the same semantics as `heal --watch`, or remove it from the design.
+- [ ] **Watch behavior.** `heal --watch` callback currently re-runs tests and prints failures only — it does not heal. Either route through the full pipeline or document and rename the flag.
+
 ## Repair quality
 
 - [ ] **Calibration corpus.** `calibrate` exists but ships without a public corpus. Build a small reference corpus (e.g. 50 real-world breakages) and check it in.

@@ -135,9 +135,13 @@ $HOME/.pw-doctor/               0o700   per-user, per-machine
 <project-root>/.pw-doctor/      0o700   per-project, gitignored
 ├── audit/
 │   └── ai-calls.jsonl          0o600   AI call log: hashes only, never DOM
-├── backups/                    0o700   Pre-patch backups for rollback
+├── backups/
+│   └── <runId>/                0o700   pre-patch backups (flattened relative paths)
+│       └── <flat-path>         0o600   one per file patched in this run
 ├── captures/                   0o700   DOM snapshots from failing tests
-└── history/                    0o700   Run history (redacted)
+│   └── <fileHash>-<testHash>.html  0o600
+└── history/
+    └── runs/                   0o700   run history JSON (currently from `check` only)
 ```
 
 `pw-doctor init` adds `.pw-doctor/` to your project's `.gitignore` automatically.

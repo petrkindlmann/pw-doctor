@@ -11,9 +11,18 @@ All notable changes to pw-doctor are recorded here. Format follows [Keep a Chang
 - `.archive/recovered/` — historical PRDs and phase plans recovered from pre-public history (not shipped)
 
 ### Changed
+- Docs corrected after a Codex second-opinion review caught 12 discrepancies between intended-state language and actual code. Notable corrections:
+  - Strategy model is "all generate, ranker picks", not "first high-confidence wins"
+  - AI runs in parallel with heuristics today (fallback-ladder is a TODO)
+  - `init` prints reporter setup instructions; does not edit `playwright.config`
+  - Captures live at `.pw-doctor/captures/<fileHash>-<testHash>.html` (no manifest file)
+  - Backups live at `.pw-doctor/backups/<runId>/<flattened-path>` (no `.bak` sibling files)
+  - `heal` does not persist `RunHistory` today — only `check` does
+  - `pw-doctor watch` is not a registered command; only `heal --watch` works
+  - Config search list: `.pw-doctor.config.{json,yaml,yml}` → `.pw-doctorrc.{json,yaml,yml}` → `package.json`
 - `README.md` and `CLAUDE.md` rewritten for clarity and accuracy against current code
 - `CONTRIBUTING.md` polished; GitHub URLs updated (`petr-kin` → `petrkindlmann`)
-- `.gitignore` restructured with sections; no longer ignores `CLAUDE.md`; adds `.playwright-mcp/`, `.DS_Store`, `*.log`
+- `.gitignore` restructured with sections; no longer ignores `CLAUDE.md`; adds `.playwright-mcp/`, `.DS_Store`, `*.log`, `.archive/`
 
 ### Removed
 - 30+ unrelated PNG screenshots from repo root

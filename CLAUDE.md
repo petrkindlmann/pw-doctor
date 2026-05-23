@@ -22,15 +22,15 @@ These exist because of audits and incidents — do not soften them.
 
 Heal loop: `run test → catch failure → capture DOM → repair → verify`. Tests drive the process — pw-doctor does not scrape live sites.
 
-Strategy order (first high-confidence wins):
+Strategies (all applicable strategies run in parallel; ranker picks best):
 
 1. `attribute_match` — `data-testid`, role, `aria-label`
 2. `text_match` — unique visible text → `getByText`
 3. `structural_match` — fuzzy DOM tree similarity (class overlap, tag, position)
 4. `anchor_match` — relative paths from stable anchors (headings, landmarks)
-5. `ai` — Anthropic/OpenAI fallback, gated as in rule 6
+5. `ai` — Anthropic/OpenAI when adapter + DOM + consent, gated as in rule 6
 
-Heuristics are free and <100ms. AI is BYOK, ~2s, opt-in via consent gate on first enable.
+`candidate-ranker` sorts by `confidence + METHOD_RESILIENCE[method]` and bucketizes into `auto_apply | suggest | skip` against `autoApplyThreshold` / `suggestThreshold`. Heuristics are free and < 100 ms. AI is BYOK, ~2 s, opt-in via consent gate on first enable. A fallback-ladder (skip AI when heuristic already wins) is a TODO.
 
 ## Repo layout
 

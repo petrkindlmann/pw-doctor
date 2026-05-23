@@ -56,7 +56,7 @@ Playwright suites degrade as UIs change. Selectors break, CI goes red, an engine
 
 ### 6.1 In scope (v0.x)
 
-- CLI commands: `init`, `check`, `heal`, `watch`, `report`, `calibrate`, `credentials`
+- CLI commands: `init`, `check`, `heal` (with `--watch`), `report`, `calibrate`, `credentials`
 - Playwright reporter that captures DOM on test failure
 - Repair strategies: `attribute_match`, `text_match`, `structural_match`, `anchor_match`, `ai`
 - AI providers: Anthropic Claude, OpenAI GPT (BYOK)
@@ -86,11 +86,10 @@ Playwright suites degrade as UIs change. Selectors break, CI goes red, an engine
 
 | Command | Purpose |
 |---|---|
-| `pw-doctor init` | Reporter wiring, config file, `.gitignore` entries, optional gitleaks hook |
-| `pw-doctor check` | Score fragility of existing selectors (no test run) |
-| `pw-doctor heal` | Repair from captured failures. Default `--dry-run` |
-| `pw-doctor watch` | Continuous heal on file change |
-| `pw-doctor report` | Render HTML / JSON / Markdown from `.pw-doctor/history/` |
+| `pw-doctor init` | Creates config + `.pw-doctor/` dirs, scans selectors, **prints** Playwright reporter/fixture setup instructions (does not edit `playwright.config`) |
+| `pw-doctor check` | Score fragility of existing selectors (no test run); appends to run history |
+| `pw-doctor heal` | Repair from captured failures. Default `--dry-run`. Use `--watch` to re-run on file change |
+| `pw-doctor report` | Render HTML / JSON / Markdown from `.pw-doctor/history/` (currently surfaces `check`-runs only — `heal` history not yet persisted) |
 | `pw-doctor calibrate --corpus <path>` | Benchmark strategy performance against a corpus |
 | `pw-doctor credentials check` | Verify `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` |
 
@@ -98,47 +97,69 @@ Full flag and exit-code reference: [README.md](../README.md).
 
 ## 8. Repair strategies
 
-Run in priority order; first high-confidence match wins.
+All available strategies generate candidates in parallel; the ranker picks the best by `confidence + method resilience`.
 
-| # | Strategy | When it wins | Confidence ceiling |
+| # | Strategy | Generates a candidate when | Typical confidence |
 |---|---|---|---|
-| 1 | `attribute_match` | `data-testid` / ARIA role / `aria-label` present near the original target | 0.95 |
-| 2 | `text_match` | Unique visible text → `getByText` | 0.90 |
-| 3 | `structural_match` | Same tag + class overlap + DOM position match | 0.80 |
-| 4 | `anchor_match` | Relative path from a stable landmark (heading, `<nav>`, `[data-testid]`) | 0.85 |
-| 5 | `ai` | All heuristics below `min-confidence`. Requires consent + key. | 0.95 (gated by DOM check) |
+| 1 | `attribute_match` | `data-testid` / ARIA role / `aria-label` is present near the target | up to 0.95 |
+| 2 | `text_match` | A unique visible text node maps to the failing element | up to 0.90 |
+| 3 | `structural_match` | Same tag + class overlap + DOM position can be re-established | up to 0.80 |
+| 4 | `anchor_match` | A stable landmark (heading, `<nav>`, `[data-testid]`) is close enough | up to 0.85 |
+| 5 | `ai` | Adapter configured + DOM available + consent granted | up to 0.95 (gated by DOM check) |
 
-Confidence ceilings are upper bounds; per-fix confidence is lower when the signal is weaker. Threshold is configurable: `--min-confidence`.
+Ranking sorts on `confidence + METHOD_RESILIENCE[method]` and bucketizes into `auto_apply | suggest | skip` based on `autoApplyThreshold` and `suggestThreshold`. Heuristics and AI are **not** gated by a fallback ladder — both feed the same candidate pool. AI shortcut is a TODO if cost becomes the dominant concern (see [../TODO.md](../TODO.md)).
+
+Thresholds are configurable: `--min-confidence` plus `repair.autoApplyThreshold` / `repair.suggestThreshold` in config.
 
 ## 9. Quality gates for AI
 
-Every AI suggestion passes three gates before it can patch a file. Any failure discards the suggestion silently (logged for audit, never logged with DOM content).
+Every AI suggestion passes these gates before it can patch a file. Any failure discards the suggestion (logged for audit, never logged with DOM content).
 
-1. **Schema gate.** Zod parses the response; selector ≤ 500 chars; no `${}`, backticks, semicolons, `require`, `import`.
-2. **Syntax gate.** Selector must parse as a valid Playwright locator expression.
-3. **DOM hard gate.** Selector run against the captured DOM must match exactly **one** visible element whose tag/role is compatible with the original action.
+**Implemented today:**
+
+1. **Schema gate.** `AiResponseSchema` (Zod) validates the response shape: `candidates[]` of `{ selector, method, confidence: 0–100, reasoning }`. Field types only — selector-string content is checked in the next gate.
+2. **Selector validator.** Rejects empty selectors, selectors ≥ 500 chars, backticks, semicolons, newlines, `require(`, `import `, `eval(`, `Function(`, and unknown locator methods.
+3. **DOM hard gate.** Selector run against the captured DOM must match exactly **one visible element**.
+
+**Not yet implemented (TODO):**
+
+- Block `${}` template-literal escapes in selector strings
+- Parse the selector as a Playwright locator expression (today the validator does string-level checks but no AST parse)
+- Verify the matched element's tag/role is compatible with the original action (`click` → interactive, etc.)
 
 ## 10. Data flow
 
 ```
-playwright test ─▶ pw-doctor reporter ─▶ DOM snapshot to .pw-doctor/
-                                                │
-                                                ▼
-                                  pw-doctor heal
-                                  ├─ load snapshot
-                                  ├─ extract failing selector (AST)
-                                  ├─ score fragility
-                                  ├─ try strategies 1..4
-                                  ├─ if below threshold:
-                                  │   ├─ check AI consent (C7.5)
-                                  │   ├─ redact DOM (C2.1)
-                                  │   ├─ call provider (BYOK)
-                                  │   ├─ schema + syntax + DOM gate (C2.2/3/7)
-                                  │   └─ audit log (C2.6)
-                                  ├─ rank candidates
-                                  ├─ AST patch test file (backup first)
-                                  └─ re-run test → verify | rollback
+playwright test ─▶ pw-doctor fixture (testInfo.attach 'pw-doctor-dom')
+                          │
+                          ▼
+                  pw-doctor reporter
+                          │
+                          ▼
+              .pw-doctor/captures/<fileHash>-<testHash>.html
+
+pw-doctor heal
+  ├─ collect failures from Playwright JSON output / error strings
+  ├─ for each failure:
+  │   ├─ load matching DOM capture (by hash)
+  │   ├─ redact DOM once (C2.1)
+  │   ├─ generate candidates IN PARALLEL:
+  │   │     ├─ strategies 1..4 (heuristic)
+  │   │     └─ ai (if adapter + consent + DOM)
+  │   │           ├─ schema gate (C2.2)
+  │   │           ├─ selector validator (string-level checks)
+  │   │           ├─ DOM hard gate (C2.7)
+  │   │           └─ audit log (C2.6)
+  │   ├─ rank: confidence + method resilience
+  │   ├─ if best ≥ autoApplyThreshold:
+  │   │     ├─ backup → .pw-doctor/backups/<runId>/<flat-path>
+  │   │     ├─ AST-patch the file via recast
+  │   │     └─ re-run that test → keep | restore from backup
+  │   └─ else: emit "suggest" or skip
+  └─ exit with 0/1/3/4
 ```
+
+The AST + fragility scoring used by `check` is **not** part of the heal pipeline — heal works from runtime failure data, not static scanning.
 
 ## 11. Non-functional requirements
 
@@ -149,7 +170,7 @@ playwright test ─▶ pw-doctor reporter ─▶ DOM snapshot to .pw-doctor/
 | AI repair (Sonnet 4.6) | < 5 s p95 per selector | calibrate harness |
 | Per-run AI cost | configurable cap; default 50k tokens / run | audit log |
 | Memory | < 256 MB working set on a 1k-test suite | manual |
-| Crash safety | A crash mid-patch must leave a `.bak` recoverable file | tests |
+| Crash safety | Each file is copied to `.pw-doctor/backups/<runId>/<flattened-path>` before patching | `backup.ts` tests |
 
 ## 12. May 2026 ecosystem assumptions
 

@@ -22,7 +22,7 @@ npm install -D pw-doctor
 npx pw-doctor init
 ```
 
-`init` wires the reporter into your Playwright config, writes `.pw-doctorrc.json`, gitignores runtime state, and (optionally) installs a pre-commit `gitleaks` hook.
+`init` writes `.pw-doctor.config.json`, creates the `.pw-doctor/` state dir, gitignores it, and **prints** Playwright reporter/fixture setup instructions (it does not edit `playwright.config.ts` — you copy/paste the snippet it shows). Optionally installs a pre-commit `gitleaks` hook.
 
 ## How it works
 
@@ -60,7 +60,7 @@ No live-site scraping. No heuristics on green tests. It only acts on real failur
 
 ## Repair strategies
 
-Each strategy runs in order. First high-confidence match wins.
+All applicable strategies generate candidates in parallel; the ranker picks the best by `confidence + method resilience`.
 
 | # | Strategy | Signal |
 |---|---|---|

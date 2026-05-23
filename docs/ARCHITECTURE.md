@@ -1,6 +1,6 @@
 # Architecture
 
-> Verified against the source at commit ee66b0a (May 2026). Grep before trusting line counts.
+> Verified against the source at the tip of `main` (May 2026), after Codex second-opinion review. Grep before trusting line counts — module shape is stable, line numbers are not.
 
 ## 1. Shape
 
@@ -16,7 +16,7 @@ packages/
 
 ## 2. Runtime topology
 
-pw-doctor is a single Node process that spawns Playwright as a subprocess and writes to test files. Two long-running modes exist (`watch`, `heal --watch`); everything else is one-shot.
+pw-doctor is a single Node process that spawns Playwright as a subprocess and writes to test files. One long-running mode exists (`heal --watch`); everything else is one-shot. `watch.ts` exports a `startWatchMode` helper that `heal` uses — there is no standalone `pw-doctor watch` command.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -61,10 +61,10 @@ packages/cli/src/
 ├── bin/pw-doctor.ts          commander entry. Wires every command.
 │
 ├── commands/                 one file per CLI subcommand
-│   ├── init.ts               detect Playwright, write config, register reporter, gitleaks opt-in
-│   ├── check.ts              extract selectors, score fragility, no test run
-│   ├── heal.ts               full heal pipeline. Most flags live here
-│   ├── watch.ts              chokidar wrapper around `heal`
+│   ├── init.ts               detect Playwright, write config, **print** reporter/fixture setup
+│   ├── check.ts              extract selectors, score fragility, no test run; writes run history
+│   ├── heal.ts               full heal pipeline. Most flags + `--watch` live here. Does not write run history (TODO)
+│   ├── watch.ts              chokidar helper (exports `startWatchMode`; not a registered command)
 │   ├── report.ts             render history → HTML/JSON/Markdown
 │   ├── calibrate.ts          benchmark strategies against a corpus
 │   └── credentials.ts        check ANTHROPIC_API_KEY / OPENAI_API_KEY
@@ -148,26 +148,33 @@ All boundary data is Zod-validated. Three matter:
 
 ## 5. Heal pipeline, step by step
 
-`src/repair/repair-pipeline.ts` is the orchestrator. Sequence per failing selector:
+`commands/heal.ts` is the orchestrator; `repair/repair-pipeline.ts` is the per-failure worker. Sequence per failing selector:
 
-1. **Locate the call site.** `selector-extractor` parses the test file with `@babel/parser`, finds the call, captures file + line + locator string.
-2. **Load the DOM snapshot** the reporter wrote. Path is `.pw-doctor/captures/<runId>/<testId>.html`.
-3. **Redact the DOM** (`dom-redactor`) once. The redacted DOM is used for both the heuristic strategies and the AI prompt.
-4. **Run strategies 1..4** in priority order. Each returns zero or more `RepairCandidate { selector, confidence, reasoning, strategy }`.
-5. **Rank** candidates (`candidate-ranker`). If the top candidate ≥ `min-confidence`, skip to step 7.
-6. **AI fallback** (if `ai.enabled` and consent given):
-   - `consent-gate` checks first-run state.
+1. **Collect failures.** `test-runner` parses Playwright JSON output and error strings (no AST cross-reference). Each failure has `{ file, line, selector, method, error }`.
+2. **Load the DOM snapshot.** Reporter wrote it at `.pw-doctor/captures/<hash(file)>-<hash(testTitle)>.html`. Heal matches on the same hashes.
+3. **Redact the DOM** (`dom-redactor`) once. Reused for every strategy.
+4. **Generate candidates in parallel.** All applicable strategies (1..4) run; if an AI adapter is configured and DOM is available, AI runs too. There is **no fallback ladder** — every strategy that can produce a candidate does.
+5. **AI candidate generation** (when adapter + DOM are present):
+   - `consent-gate` is checked at the command layer before adapter init.
    - `prompt-builder` assembles the redacted DOM + failure context.
-   - `cost-estimator` checks per-run token budget.
+   - `cost-estimator` accounts for per-run token budget.
    - `anthropic-adapter` / `openai-adapter` calls the provider.
-   - Response goes through `ai-response-schema` → `selector-validator` → `dom-hard-gate`.
-   - `audit-logger` appends a JSONL entry with hashes and timing.
-7. **Plan the patch.** `ast-patcher` builds the new AST nodes; `backup` writes `<file>.bak`.
-8. **Write** via `safe-path.safeWriteFile` — canonicalized, mode `0o600`, refuses out-of-root paths.
-9. **Verify.** `test-runner` re-runs only the affected test. Pass = keep; fail = rollback from `.bak`.
-10. **Record.** Append a `RepairRecord` to the run history. Exit with the right code (0/1/3/4 — see [PRD.md](PRD.md)).
+   - Each returned candidate passes `ai-response-schema` (Zod fields) → `selector-validator` (string-level rejects: ≥ 500 chars, backticks, semicolons, newlines, `require(`, `import `, `eval(`, `Function(`, unknown method) → `dom-hard-gate` (exactly one visible match).
+   - `audit-logger` appends a JSONL entry with hashes, timing, tokens, cost.
+6. **Rank.** `candidate-ranker` computes `confidence + METHOD_RESILIENCE[method]` and bucketizes into `auto_apply` (≥ `autoApplyThreshold`) / `suggest` (≥ `suggestThreshold`) / `skip`. Returns sorted by final score.
+7. **Apply (auto_apply only, with `--apply`).**
+   - `assertWithinRoot(cwd, filePath)` then read current source (cached per-file across patches).
+   - `backup.createBackup(cwd, filePath, runId)` copies the file to `.pw-doctor/backups/<runId>/<flattened-relative-path>` at mode `0o600`. *Not* a `.bak` sibling.
+   - `ast-patcher.patchSelector` rewrites the locator via `recast`.
+   - `fs.writeFileSync(filePath, patched, { mode: 0o600 })` — `safeWriteFile` is reserved for `.pw-doctor/` internal writes; heal uses `assertWithinRoot` then `writeFileSync`.
+8. **Verify.** `test-runner` reruns only the affected test. Pass keeps the patch; fail calls `restoreBackup` from the `<runId>` directory.
+9. **Exit.** 0/1/3/4 — see [PRD.md §11](PRD.md#11-non-functional-requirements).
+
+**Not yet implemented:** heal does **not** append to `RunHistory`. Only `check` writes history (`commands/check.ts`), so `report` currently surfaces check-runs only. Tracked in [../TODO.md](../TODO.md).
 
 ## 6. Reporter integration
+
+DOM capture requires **both** the reporter and the fixture. They cooperate via Playwright's attachment system.
 
 ```ts
 // playwright.config.ts
@@ -175,30 +182,39 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   reporter: [
+    ['default'],
     ['pw-doctor/reporter'],
-    ['html'],
   ],
 });
 ```
 
-`pw-doctor-reporter.ts` implements Playwright's `Reporter` interface. On any failing test it:
+```ts
+// any test file that should capture on failure
+import { test, expect } from 'pw-doctor/reporter';
+```
 
-1. Asks the fixture for the page's HTML (`page.content()`).
-2. Writes it to `.pw-doctor/captures/<runId>/<testId>.html` with `safe-path`.
-3. Records a manifest entry (test id, file, line, failed locator if known) for `heal` to consume.
+Direction of data flow:
 
-The reporter never blocks the test run on snapshot failures — capture is best-effort.
+1. **Fixture** (`pw-doctor-fixture.ts`). Extends `@playwright/test`. After the page test runs, if `testInfo.status === 'failed'`, it calls `page.content()` and `testInfo.attach('pw-doctor-dom', { body, contentType: 'text/html' })`. Capture is best-effort; if the page is closed or crashed, capture is silently skipped.
+2. **Reporter** (`pw-doctor-reporter.ts`). Implements Playwright's `Reporter` interface. On `onTestEnd`, if the test failed, it reads the `pw-doctor-dom` attachment, computes `hashString(test.location.file)` and `hashString(test.title)`, and writes the HTML to `.pw-doctor/captures/<fileHash>-<testHash>.html` at mode `0o600`. No manifest file is written — heal recomputes the hashes when matching.
+
+The reporter does **not** call `page.content()` itself — by the time `onTestEnd` fires, the page may already be torn down.
+
+`init` does not edit `playwright.config.ts`. It prints the snippet above and a manual instruction to switch test-file imports to `pw-doctor/reporter`.
 
 ## 7. Configuration resolution
 
-`cosmiconfig` searches, in order:
+`cosmiconfig` `searchPlaces`, in this exact order (`config/loader.ts`):
 
-1. `pw-doctor` key in `package.json`
-2. `.pw-doctorrc` (JSON or YAML)
-3. `.pw-doctorrc.json` / `.yaml` / `.yml`
-4. `pw-doctor.config.json` / `.yaml`
+1. `.pw-doctor.config.json`
+2. `.pw-doctor.config.yaml`
+3. `.pw-doctor.config.yml`
+4. `.pw-doctorrc.json`
+5. `.pw-doctorrc.yaml`
+6. `.pw-doctorrc.yml`
+7. `package.json` (`"pw-doctor"` key)
 
-**Excluded by design:** `.js`, `.ts`, `.cjs`, `.mjs` configs. Static formats only (C1.1).
+**Excluded by design:** `.js`, `.ts`, `.cjs`, `.mjs`, and bare-name `.pw-doctorrc` (which cosmiconfig would parse as YAML). No `loaders` overrides — only static formats (C1.1).
 
 ## 8. Security boundary map
 
