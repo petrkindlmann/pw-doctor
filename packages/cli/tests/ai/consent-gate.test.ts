@@ -110,7 +110,6 @@ describe('recordAiConsent', () => {
     recordAiConsent(consentDir);
 
     const stat = fs.statSync(consentDir);
-    // eslint-disable-next-line no-bitwise
     const mode = stat.mode & 0o777;
     expect(mode).toBe(0o700);
   });
@@ -121,7 +120,6 @@ describe('recordAiConsent', () => {
 
     const consentFile = path.join(consentDir, 'ai-consent.json');
     const stat = fs.statSync(consentFile);
-    // eslint-disable-next-line no-bitwise
     const mode = stat.mode & 0o777;
     expect(mode).toBe(0o600);
   });

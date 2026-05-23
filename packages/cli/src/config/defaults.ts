@@ -1,4 +1,5 @@
 import type { PwDoctorConfig } from '@pw-doctor/shared';
+import { DEFAULT_AI_MODEL } from '@pw-doctor/shared';
 
 export const DEFAULT_CONFIG: PwDoctorConfig = {
   testDir: './tests',
@@ -12,7 +13,7 @@ export const DEFAULT_CONFIG: PwDoctorConfig = {
   ai: {
     enabled: false,
     provider: 'anthropic',
-    model: 'claude-sonnet-4-20250514',
+    model: DEFAULT_AI_MODEL,
     maxTokens: 4096,
     maxCallsPerRun: 20,
     tokenBudgetPerRun: 50000,

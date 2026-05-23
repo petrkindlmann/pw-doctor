@@ -1,5 +1,6 @@
 // packages/shared/src/schemas.ts
 import { z } from 'zod';
+import { DEFAULT_AI_MODEL } from './constants.js';
 
 export const RunHistorySchema = z.object({
   schemaVersion: z.literal(1),
@@ -81,7 +82,7 @@ export const ConfigSchema = z.object({
     .object({
       enabled: z.boolean().default(false),
       provider: z.enum(['anthropic', 'openai']).default('anthropic'),
-      model: z.string().default('claude-sonnet-4-20250514'),
+      model: z.string().default(DEFAULT_AI_MODEL),
       maxTokens: z.number().default(4096),
       maxCallsPerRun: z.number().default(20),
       tokenBudgetPerRun: z.number().default(50000),

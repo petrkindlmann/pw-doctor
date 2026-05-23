@@ -4,8 +4,17 @@
  * Per-1M-token prices in cents for known models.
  */
 const MODEL_PRICES: Record<string, { input: number; output: number }> = {
-  'claude-sonnet-4-20250514': { input: 300, output: 1500 },
+  // Anthropic — current model line (May 2026)
+  'claude-opus-4-7': { input: 1500, output: 7500 },
+  'claude-sonnet-4-6': { input: 300, output: 1500 },
+  'claude-haiku-4-5': { input: 80, output: 400 },
+  // Pinned variants
   'claude-haiku-4-5-20251001': { input: 80, output: 400 },
+  // Legacy — kept for back-compat with older configs
+  'claude-sonnet-4-20250514': { input: 300, output: 1500 },
+  // OpenAI
+  'gpt-5': { input: 500, output: 2000 },
+  'gpt-5-mini': { input: 30, output: 120 },
   'gpt-4o': { input: 250, output: 1000 },
   'gpt-4o-mini': { input: 15, output: 60 },
 };

@@ -39,6 +39,12 @@ export const CONFIG_FILE_NAMES = [
 export const PW_DOCTOR_DIR = '.pw-doctor';
 export const SCHEMA_VERSION = 1;
 
+/**
+ * Default AI model. Single source of truth for schemas, defaults, and adapters.
+ * Bump when the model line changes; cost-estimator pricing must follow.
+ */
+export const DEFAULT_AI_MODEL = 'claude-sonnet-4-6';
+
 export const REDACT_SENSITIVE_PATTERNS = [
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
   /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,

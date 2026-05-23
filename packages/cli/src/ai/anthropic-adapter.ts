@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AiRepairInput, AiRepairResponse } from '@pw-doctor/shared';
+import { DEFAULT_AI_MODEL } from '@pw-doctor/shared';
 import type { AiRepairAdapter } from './ai-adapter.js';
 import { AiAdapterError } from './ai-adapter.js';
 import { buildRepairPrompt } from './prompt-builder.js';
@@ -19,7 +20,7 @@ export class AnthropicAdapter implements AiRepairAdapter {
 
   constructor(options: AnthropicAdapterOptions) {
     this.client = new Anthropic({ apiKey: options.apiKey });
-    this.model = options.model ?? 'claude-sonnet-4-20250514';
+    this.model = options.model ?? DEFAULT_AI_MODEL;
     this.maxTokens = options.maxTokens ?? 4096;
   }
 
