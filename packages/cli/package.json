@@ -5,12 +5,12 @@
   "description": "AI-powered Playwright test selector maintenance",
   "repository": {
     "type": "git",
-    "url": "https://github.com/petr-kin/pw-doctor.git"
+    "url": "https://github.com/petrkindlmann/pw-doctor.git"
   },
-  "author": "petr-kin",
-  "homepage": "https://github.com/petr-kin/pw-doctor#readme",
+  "author": "petrkindlmann",
+  "homepage": "https://github.com/petrkindlmann/pw-doctor#readme",
   "bugs": {
-    "url": "https://github.com/petr-kin/pw-doctor/issues"
+    "url": "https://github.com/petrkindlmann/pw-doctor/issues"
   },
   "bin": {
     "pw-doctor": "./dist/bin/pw-doctor.js"

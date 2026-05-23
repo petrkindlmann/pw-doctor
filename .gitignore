@@ -1,9 +1,26 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-.pw-doctor/
 *.tsbuildinfo
 .turbo/
-.env*
+
+# Test & coverage
 coverage/
-CLAUDE.md
+
+# Environment / secrets
+.env*
+
+# pw-doctor runtime state
+.pw-doctor/
+
+# Editor / OS
+.DS_Store
+*.log
+
+# Tooling caches
+.playwright-mcp/
+
+# Screenshots, scratch artifacts
 *.png

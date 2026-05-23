@@ -1,122 +1,115 @@
 # pw-doctor
 
-CLI tool that automatically repairs broken Playwright test selectors.
+Self-healing Playwright selectors. When a test fails because the DOM changed, pw-doctor finds the right selector and patches the test file.
 
-Runs your tests, captures the DOM when they fail, finds the right replacement selector, and patches your test files.
+[pw-doctor.dev](https://pw-doctor.dev) · [npm](https://www.npmjs.com/package/pw-doctor)
 
-**[pw-doctor.dev](https://pw-doctor.dev)** &middot; **[npm](https://www.npmjs.com/package/pw-doctor)**
+```
+✗ login.spec.ts:14
+  page.locator('#submit-btn')
+  Element not found
+
+  ✓ page.getByRole('button', { name: 'Sign in' })
+    attribute_match · confidence 0.94
+
+Applied 1 fix. Run tests to verify.
+```
 
 ## Install
 
 ```bash
 npm install -D pw-doctor
+npx pw-doctor init
 ```
 
-## Quick start
-
-**1. Add the reporter to your Playwright config:**
-
-```ts
-// playwright.config.ts
-export default defineConfig({
-  reporter: [
-    ['pw-doctor/reporter'],
-    ['html'],
-  ],
-});
-```
-
-**2. Run your tests (failures get captured automatically):**
-
-```bash
-npx playwright test
-```
-
-**3. Heal broken selectors:**
-
-```bash
-npx pw-doctor heal
-```
-
-```
-  ✗ login.spec.ts:14
-    page.locator('#submit-btn')
-    Element not found
-
-    ✓ page.getByRole('button', { name: 'Sign in' })
-      attribute_match · confidence 0.94
-
-Applied 1 fix. Run tests to verify.
-```
+`init` wires the reporter into your Playwright config, writes `.pw-doctorrc.json`, gitignores runtime state, and (optionally) installs a pre-commit `gitleaks` hook.
 
 ## How it works
 
-1. **Capture** — The reporter saves a DOM snapshot whenever a test fails
-2. **Analyze** — `pw-doctor heal` runs five repair strategies against the captured DOM
-3. **Patch** — The best selector is applied to your test file via AST (preserves formatting)
-4. **Verify** — Run your tests again to confirm the fix works
+1. **Capture.** The reporter snapshots the DOM at the exact moment a test fails.
+2. **Repair.** `pw-doctor heal` runs five strategies against that DOM, ranked by confidence.
+3. **Patch.** The winning selector is written to your test file via AST — formatting and comments preserved.
+4. **Verify.** Tests re-run; failed patches roll back automatically.
 
-## Repair strategies
-
-Each strategy runs in order. The first high-confidence match wins.
-
-| Strategy | What it does |
-|---|---|
-| `attribute_match` | Finds selectors from `data-testid`, `aria-label`, ARIA roles |
-| `text_match` | Matches elements by visible text content |
-| `structural_match` | Fuzzy matching via class name overlap and DOM position |
-| `anchor_match` | Relative selectors from stable landmarks (headings, `<nav>`, `[data-testid]`) |
-| `ai` | Sends redacted DOM to Claude or GPT when heuristics aren't enough |
-
-AI repair is opt-in (requires explicit consent), validates every suggestion against the DOM, and logs all calls for audit.
+No live-site scraping. No heuristics on green tests. It only acts on real failures.
 
 ## Commands
 
-| Command | Description |
+| Command | Purpose |
 |---|---|
-| `pw-doctor init` | Set up reporter, config, gitignore, gitleaks hook |
-| `pw-doctor heal` | Repair broken selectors (default: `--dry-run`) |
-| `pw-doctor check` | Scan selectors and score fragility |
-| `pw-doctor watch` | Auto-repair on file change |
-| `pw-doctor report` | Generate HTML/JSON/Markdown repair history |
-| `pw-doctor calibrate` | Benchmark strategies against a test corpus |
-| `pw-doctor credentials check` | Verify AI API keys |
+| `pw-doctor init` | One-time setup: reporter, config, gitignore, gitleaks hook |
+| `pw-doctor check` | Score existing selectors for fragility (no test run) |
+| `pw-doctor heal` | Repair broken selectors (default: dry-run) |
+| `pw-doctor watch` | Heal continuously as files change |
+| `pw-doctor report` | Render HTML / JSON / Markdown run history |
+| `pw-doctor calibrate --corpus <path>` | Benchmark strategies against a corpus |
+| `pw-doctor credentials check` | Verify `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` |
 
-## Heal flags
+### Heal flags
 
 ```
---apply              Apply fixes (default is dry-run)
---interactive        Approve each fix individually
---no-ai              Skip AI repair strategy
---min-confidence N   Minimum confidence threshold (0-1)
---max-files N        Limit files to process
---watch              Re-run on file changes
---ci                 CI mode (non-interactive, stricter)
---preview-ai-payload Show what would be sent to AI without calling it
+--apply              Write fixes (omit for dry-run)
+--interactive        Approve each fix
+--no-ai              Heuristics only
+--min-confidence N   Threshold 0..1 (default 0.7)
+--max-files N        Cap files touched
+--watch              Re-run on change
+--ci                 Non-interactive, stricter
+--preview-ai-payload Show the AI request without sending
 ```
 
-## AI providers
+## Repair strategies
 
-pw-doctor supports Anthropic (Claude) and OpenAI (GPT) as AI repair backends. Set your API key as an environment variable:
+Each strategy runs in order. First high-confidence match wins.
+
+| # | Strategy | Signal |
+|---|---|---|
+| 1 | `attribute_match` | `data-testid`, ARIA role, `aria-label` |
+| 2 | `text_match` | Unique visible text → `getByText` |
+| 3 | `structural_match` | Class overlap + tag + DOM position |
+| 4 | `anchor_match` | Relative path from stable landmarks (headings, `<nav>`, `[data-testid]`) |
+| 5 | `ai` | Claude or GPT, gated by validation + DOM check |
+
+## AI repair (optional, opt-in)
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-# or
+export ANTHROPIC_API_KEY=sk-ant-...   # or
 export OPENAI_API_KEY=sk-...
 ```
 
-AI is never called without your explicit consent. Every AI suggestion passes:
-1. Selector syntax validation (no injection)
-2. DOM hard-gate (must match exactly 1 visible element)
-3. Audit logging (tokens, cost, timing — never DOM content)
+Every AI suggestion passes three gates before it can patch a file:
+
+1. **Syntax validation** — no backticks, no JS injection, must look like a Playwright locator
+2. **DOM hard-gate** — selector must match exactly one visible element in the captured DOM
+3. **Audit log** — tokens, cost, timing recorded to `.pw-doctor/audit/ai-calls.jsonl` (DOM content is never logged)
+
+AI is disabled until you accept the consent gate on first run.
 
 ## Security
 
-- Default `--dry-run` — never auto-applies without `--apply`
-- DOM sent to AI is redacted (credentials stripped, URLs sanitized)
-- No `eval()`, no shell interpolation, no disk-stored secrets
-- All file writes verified within project root
-- Pre-commit gitleaks hook setup via `init`
+- `--dry-run` by default; never writes without `--apply`
+- DOM sent to AI is redacted (credentials, URLs, free text stripped)
+- No `eval()`, no shell strings — `execFile` with array args only
+- All writes path-canonicalized inside the project root
+- Config files: JSON / YAML only (no JS/TS eval)
+- Secrets via env vars only (never written to disk)
+- Optional pre-commit `gitleaks` hook installed by `init`
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Healthy |
+| `1` | Broken selectors found |
+| `2` | Tool error |
+| `3` | Fixes applied and verified |
+| `4` | Fixes applied but failed verification (rolled back) |
+
+## Project
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, tests, conventions
+- [TODO.md](TODO.md) — known follow-ups
+- Issues: <https://github.com/petrkindlmann/pw-doctor/issues>
 
 ## License
 

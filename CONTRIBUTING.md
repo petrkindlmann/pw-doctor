@@ -3,51 +3,64 @@
 ## Setup
 
 ```bash
-git clone https://github.com/petr-kin/pw-doctor.git
+git clone https://github.com/petrkindlmann/pw-doctor.git
 cd pw-doctor
 npm install
 npm run build
 ```
 
+Requires Node ≥ 20.
+
 ## Running tests
 
 ```bash
 cd packages/cli
-npx vitest run
+npx vitest run        # 417 tests across 43 files
+npx vitest            # watch mode
+npx tsc --noEmit      # typecheck
 ```
 
-417 tests across 43 test files.
+## Project layout
 
-## Project structure
+Turborepo monorepo, two packages:
 
-Turborepo monorepo with two packages:
-
-- `packages/cli` — The CLI tool (published as `pw-doctor` on npm)
-- `packages/shared` — Shared types and constants
+- `packages/cli` — the `pw-doctor` CLI (published to npm)
+- `packages/shared` — shared types and Zod schemas
 
 ```
 packages/cli/src/
-  bin/          CLI entry point
-  commands/     init, check, heal, watch, report, calibrate, credentials
-  core/         selector-extractor, fragility-scorer, ast-patcher, test-runner, dom-analyzer
-  repair/       text-match, attribute-match, structural-match, anchor-match, candidate-ranker
-  ai/           anthropic-adapter, openai-adapter, prompt-builder, consent-gate, audit-logger
-  reporter/     Playwright reporter + fixture
+  bin/          CLI entry (commander)
+  commands/     init check heal watch report calibrate credentials
+  core/         selector extraction, AST patching, DOM analysis & redaction
+  repair/       attribute, text, structural, anchor strategies + pipeline
+  ai/           provider-agnostic adapter (Anthropic, OpenAI) + safety gates
+  reporter/     Playwright reporter + fixture (captures DOM on failure)
   config/       cosmiconfig loader + schema
-  utils/        safe-exec, safe-path, error-sanitizer, hash
+  report/       terminal & JSON output renderers
+  utils/        safe-exec, safe-path, error-sanitizer, hash, gitleaks-hook
 ```
 
-## Code conventions
+Full architecture: [CLAUDE.md](CLAUDE.md).
 
-- TypeScript strict mode, ESM
-- Zod for validation
-- AST patching via recast + @babel/parser (never regex)
-- `execFile` only (never `exec`)
-- All file paths canonicalized and verified within project root
+## Conventions
+
+- TypeScript strict, ESM
+- Zod for every external boundary (config, AI response, file content)
+- AST patching via `recast` + `@babel/parser` — **never regex** on selectors
+- `execFile` only — **never `exec`** or string-interpolated shells
+- Canonicalize every path and verify it lives inside the project root before any write
+- Secrets via env vars only (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`)
+
+The full non-negotiable list is in [CLAUDE.md](CLAUDE.md#non-negotiable-rules). Skim it before touching `src/ai/`, `src/core/ast-patcher.ts`, or anything in `src/utils/safe-*`.
 
 ## Pull requests
 
-1. Fork and create a feature branch
-2. Write tests first
-3. Run `npx vitest run` — all tests must pass
-4. Keep commits focused and well-described
+1. Fork, branch from `main`.
+2. Add or update tests in `packages/cli/tests/` alongside the change.
+3. `npx vitest run` and `npx tsc --noEmit` must be clean.
+4. One logical change per PR; descriptive commit body.
+5. If the change touches a security control, call it out explicitly in the PR body.
+
+## Reporting bugs
+
+Open an issue: <https://github.com/petrkindlmann/pw-doctor/issues>. Include the Playwright version, Node version, and (if possible) a redacted snippet of the failing selector + DOM.
