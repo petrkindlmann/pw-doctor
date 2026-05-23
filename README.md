@@ -113,6 +113,7 @@ AI is disabled until you accept the consent gate on first run.
 - [CHANGELOG.md](CHANGELOG.md) — version history
 - [CONTRIBUTING.md](CONTRIBUTING.md) — setup, tests, conventions
 - [TODO.md](TODO.md) — known follow-ups
+- [examples/](examples) — runnable walkthroughs
 - Issues: <https://github.com/petrkindlmann/pw-doctor/issues>
 
 ## License

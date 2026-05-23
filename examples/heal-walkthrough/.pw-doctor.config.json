@@ -1,0 +1,11 @@
+{
+  "testDir": "./tests",
+  "testMatch": "**/*.spec.ts",
+  "repair": {
+    "autoApplyThreshold": 85,
+    "suggestThreshold": 50
+  },
+  "ai": {
+    "enabled": false
+  }
+}

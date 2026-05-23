@@ -4,11 +4,30 @@ All notable changes to pw-doctor are recorded here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-05-23
+
+First public release after the Codex doc audit and the ship-it sweep.
+
 ### Added
+- `pw-doctor watch` as a top-level command (alias for `heal --watch`); watch callback now runs the full repair pipeline in suggest mode instead of just printing failures
+- `heal` persists run history to `.pw-doctor/history/runs/` so `pw-doctor report` surfaces heal-runs
+- AI fallback ladder — when any heuristic candidate already clears `repair.autoApplyThreshold`, the AI call is skipped (cuts cost and latency)
+- DOM hard gate now checks tag/role compatibility against the test's action (`click`/`fill`/`check`/`select`/`hover`/`press`) when the action can be inferred from the failure message
+- Selector validator blocks `${}` template-literal escapes in AI-returned selectors
+- `SelectorFailure.action` inferred from Playwright error messages; passed through the pipeline to the DOM gate
+- Real `npm run lint` powered by `typescript-eslint` + `eslint-plugin-security`; security non-negotiables encoded as ESLint rules
+- GitHub Actions CI (Node 20 + 22 matrix: build + typecheck + lint + test)
+- GitHub Actions Release workflow that publishes to npm with provenance on `v*` tags
+- `publishConfig.provenance: true` in `packages/cli/package.json`
+- `examples/heal-walkthrough/` — runnable end-to-end demonstration
 - `docs/PRD.md`, `docs/ARCHITECTURE.md`, `SECURITY.md` with full control catalogue
 - `CHANGELOG.md` (this file)
 - `TODO.md` with prioritized follow-ups
 - `.archive/recovered/` — historical PRDs and phase plans recovered from pre-public history (not shipped)
+
+### Changed
+- Default AI model bumped from `claude-sonnet-4-20250514` to `claude-sonnet-4-6`; new model line (`opus-4-7`, `sonnet-4-6`, `haiku-4-5`) priced in cost-estimator
+- `DEFAULT_AI_MODEL` is now a single source of truth in `@pw-doctor/shared`; `defaults.ts`, schema, and Anthropic adapter all derive from it
 
 ### Changed
 - Docs corrected after a Codex second-opinion review caught 12 discrepancies between intended-state language and actual code. Notable corrections:
@@ -77,6 +96,7 @@ Internal pre-release. Not published to npm.
 - Selector extractor (Babel AST walker)
 - Fragility scorer
 
-[Unreleased]: https://github.com/petrkindlmann/pw-doctor/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/petrkindlmann/pw-doctor/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/petrkindlmann/pw-doctor/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/petrkindlmann/pw-doctor/releases/tag/v0.0.2
 [0.0.1]: https://github.com/petrkindlmann/pw-doctor/releases/tag/v0.0.1
