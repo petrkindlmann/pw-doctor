@@ -114,6 +114,61 @@ describe('generateRepairCandidates', () => {
     expect(aiTokensUsed).toBeUndefined();
   });
 
+  it('short-circuits AI when a heuristic already clears autoApplyThreshold', async () => {
+    const failure: SelectorFailure = {
+      file: 'tests/login.spec.ts',
+      line: 10,
+      column: 4,
+      selector: '.btn-primary',
+      method: 'locator',
+      testName: 'login test',
+      error: 'Timeout',
+    };
+
+    const mockAdapter: AiRepairAdapter = {
+      provider: 'anthropic',
+      suggestRepair: vi.fn(),
+    };
+
+    const { aiSkipped } = await generateRepairCandidates(failure, HTML, {
+      aiAdapter: mockAdapter,
+      // login fixture yields a getByTestId candidate at confidence ~95
+      aiShortCircuitThreshold: 90,
+    });
+
+    expect(mockAdapter.suggestRepair).not.toHaveBeenCalled();
+    expect(aiSkipped).toBe('heuristic_sufficient');
+  });
+
+  it('still calls AI when heuristic confidence is below threshold', async () => {
+    const failure: SelectorFailure = {
+      file: 'tests/login.spec.ts',
+      line: 10,
+      column: 4,
+      selector: '.btn-primary',
+      method: 'locator',
+      testName: 'login test',
+      error: 'Timeout',
+    };
+
+    const mockAdapter: AiRepairAdapter = {
+      provider: 'anthropic',
+      suggestRepair: vi.fn().mockResolvedValue({
+        candidates: [],
+        tokensUsed: 100,
+        provider: 'anthropic',
+      } as AiRepairResponse),
+    };
+
+    const { aiSkipped } = await generateRepairCandidates(failure, HTML, {
+      aiAdapter: mockAdapter,
+      aiShortCircuitThreshold: 999, // unreachable
+    });
+
+    expect(mockAdapter.suggestRepair).toHaveBeenCalled();
+    expect(aiSkipped).toBeUndefined();
+  });
+
   it('does not call AI adapter when html is empty', async () => {
     const failure: SelectorFailure = {
       file: 'tests/login.spec.ts',

@@ -2,6 +2,8 @@
 import path from 'node:path';
 import chalk from 'chalk';
 import { watch } from 'chokidar';
+import { Command } from 'commander';
+import { executeHeal } from './heal.js';
 
 export function startWatchMode(
   cwd: string,
@@ -36,4 +38,22 @@ export function startWatchMode(
   });
 
   return { close: () => watcher.close() };
+}
+
+/**
+ * `pw-doctor watch` — alias for `pw-doctor heal --watch` so the command
+ * surface matches user expectations. Delegates to `executeHeal` with
+ * `watch: true` set.
+ */
+export function watchCommand(): Command {
+  return new Command('watch')
+    .description('Continuously heal as test files change (alias for `heal --watch`)')
+    .option('--dry-run', 'Show proposed fixes without applying (default)', true)
+    .option('--apply', 'Apply fixes meeting confidence threshold')
+    .option('--min-confidence <n>', 'Minimum confidence to apply', '85')
+    .option('--max-files <n>', 'Maximum files to process')
+    .option('--ci', 'CI mode: JSON output, no interactive prompts')
+    .option('--no-ai', 'Disable AI repair even if configured')
+    .option('--preview-ai-payload', 'Show AI payload without sending')
+    .action((options) => executeHeal({ ...options, watch: true }));
 }

@@ -115,4 +115,112 @@ describe('verifyAgainstDom', () => {
     expect(result.passes).toBe(false);
     expect(result.reason).toBe('no elements matched');
   });
+
+  // --- Action compatibility ---
+
+  const ACTION_HTML = `
+    <!DOCTYPE html>
+    <html><body>
+      <button data-testid="real-btn">Click me</button>
+      <div data-testid="fake-btn">Click me</div>
+      <input type="text" data-testid="textbox" placeholder="enter" />
+      <input type="checkbox" data-testid="check" />
+      <input type="submit" data-testid="submit-input" value="Go" />
+      <select data-testid="dropdown"><option>one</option></select>
+      <span role="button" data-testid="aria-btn">role button</span>
+    </body></html>
+  `;
+  const actionAnalyzer = new DomAnalyzer(ACTION_HTML);
+
+  it('passes click action on a <button>', () => {
+    const result = verifyAgainstDom(
+      { selector: 'real-btn', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'click' },
+    );
+    expect(result.passes).toBe(true);
+  });
+
+  it('rejects click action on a <div>', () => {
+    const result = verifyAgainstDom(
+      { selector: 'fake-btn', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'click' },
+    );
+    expect(result.passes).toBe(false);
+    expect(result.reason).toContain('no interactive role');
+  });
+
+  it('passes click action on a <span role="button">', () => {
+    const result = verifyAgainstDom(
+      { selector: 'aria-btn', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'click' },
+    );
+    expect(result.passes).toBe(true);
+  });
+
+  it('passes fill action on a text input', () => {
+    const result = verifyAgainstDom(
+      { selector: 'textbox', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'fill' },
+    );
+    expect(result.passes).toBe(true);
+  });
+
+  it('rejects fill action on a button', () => {
+    const result = verifyAgainstDom(
+      { selector: 'real-btn', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'fill' },
+    );
+    expect(result.passes).toBe(false);
+    expect(result.reason).toContain('not a form field');
+  });
+
+  it('rejects fill action on a submit input', () => {
+    const result = verifyAgainstDom(
+      { selector: 'submit-input', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'fill' },
+    );
+    expect(result.passes).toBe(false);
+  });
+
+  it('passes check action on a checkbox', () => {
+    const result = verifyAgainstDom(
+      { selector: 'check', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'check' },
+    );
+    expect(result.passes).toBe(true);
+  });
+
+  it('rejects check action on a text input', () => {
+    const result = verifyAgainstDom(
+      { selector: 'textbox', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'check' },
+    );
+    expect(result.passes).toBe(false);
+    expect(result.reason).toContain('checkbox');
+  });
+
+  it('passes select action on a <select>', () => {
+    const result = verifyAgainstDom(
+      { selector: 'dropdown', method: 'getByTestId' },
+      actionAnalyzer,
+      { expectedAction: 'select' },
+    );
+    expect(result.passes).toBe(true);
+  });
+
+  it('falls back to base checks when no expectedAction is provided', () => {
+    const result = verifyAgainstDom(
+      { selector: 'fake-btn', method: 'getByTestId' },
+      actionAnalyzer,
+    );
+    expect(result.passes).toBe(true);
+  });
 });

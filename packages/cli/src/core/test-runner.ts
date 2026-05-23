@@ -9,6 +9,8 @@ export interface TestResult {
   errorStack?: string;
 }
 
+export type LocatorAction = 'click' | 'fill' | 'check' | 'select' | 'hover' | 'press';
+
 export interface SelectorFailure {
   file: string;
   line: number;
@@ -17,6 +19,28 @@ export interface SelectorFailure {
   method: string;
   testName: string;
   error: string;
+  /**
+   * The action the test was about to perform when it failed, inferred from
+   * the Playwright error message. Used by the DOM hard gate to verify the
+   * matched element is compatible with the action.
+   */
+  action?: LocatorAction;
+}
+
+const ACTION_PATTERNS: Array<{ re: RegExp; action: LocatorAction }> = [
+  { re: /locator\.click|page\.click|\.click\(/, action: 'click' },
+  { re: /locator\.fill|page\.fill|\.fill\(/, action: 'fill' },
+  { re: /locator\.check|page\.check|\.check\(/, action: 'check' },
+  { re: /locator\.selectOption|\.selectOption\(/, action: 'select' },
+  { re: /locator\.hover|\.hover\(/, action: 'hover' },
+  { re: /locator\.press|page\.press|\.press\(/, action: 'press' },
+];
+
+export function inferAction(errorMessage: string): LocatorAction | undefined {
+  for (const { re, action } of ACTION_PATTERNS) {
+    if (re.test(errorMessage)) return action;
+  }
+  return undefined;
 }
 
 export async function runPlaywrightTests(
@@ -142,6 +166,7 @@ export function extractFailedSelectors(results: TestResult[]): SelectorFailure[]
       method,
       testName: result.testName,
       error: result.error,
+      action: inferAction(result.error),
     });
   }
 

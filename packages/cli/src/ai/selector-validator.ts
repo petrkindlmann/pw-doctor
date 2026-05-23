@@ -22,6 +22,10 @@ export function validateAiSelector(selector: string, method: string): SelectorVa
     return { valid: false, reason: 'Selector must not contain backticks' };
   }
 
+  if (selector.includes('${')) {
+    return { valid: false, reason: 'Selector must not contain template literal expressions' };
+  }
+
   if (selector.includes(';')) {
     return { valid: false, reason: 'Selector must not contain semicolons' };
   }

@@ -25,6 +25,7 @@ import { logAiCall, hashPayload } from '../ai/audit-logger.js';
 import { estimateCost } from '../ai/cost-estimator.js';
 import { startWatchMode } from './watch.js';
 import { buildRepairPrompt } from '../ai/prompt-builder.js';
+import { writeRunHistory } from '../utils/run-history.js';
 
 export function findCapturedHtml(cwd: string, relativeFile: string, testName: string): string | undefined {
   const absoluteFile = path.resolve(cwd, relativeFile);
@@ -105,21 +106,28 @@ function emitCiJson(data: CiJsonOutput, projectRoot: string): void {
   console.log(sanitized);
 }
 
-export function healCommand(): Command {
-  return new Command('heal')
-    .description('Detect broken selectors and propose fixes')
-    .option('--dry-run', 'Show proposed fixes without applying (default)', true)
-    .option('--apply', 'Apply fixes meeting confidence threshold')
-    .option('--min-confidence <n>', 'Minimum confidence to apply', '85')
-    .option('--max-files <n>', 'Maximum files to process')
-    .option('--ci', 'CI mode: JSON output, no interactive prompts')
-    .option('--interactive', 'Interactively approve/edit/skip each fix')
-    .option('--no-ai', 'Disable AI repair even if configured')
-    .option('--watch', 'Watch test files for changes and re-run heal')
-    .option('--preview-ai-payload', 'Show AI payload without sending')
-    .action(async (options) => {
+export interface HealOptions {
+  dryRun?: boolean;
+  apply?: boolean;
+  /** Commander parses --min-confidence as a string (default '85'). */
+  minConfidence: string;
+  maxFiles?: string;
+  ci?: boolean;
+  interactive?: boolean;
+  /** Commander inverse-flag: `--no-ai` produces `ai: false`. */
+  ai?: boolean;
+  watch?: boolean;
+  previewAiPayload?: boolean;
+}
+
+/**
+ * Execute the heal command. Exposed so other commands (`watch`) can
+ * call into the same flow without re-implementing 600 lines.
+ */
+export async function executeHeal(options: HealOptions): Promise<void> {
       const cwd = process.cwd();
       const runId = `pwd_${crypto.randomUUID().slice(0, 8)}`;
+      const runStartedAt = Date.now();
       if (options.ci) setCIMode(true);
 
       // Check that we're in a Playwright project
@@ -668,6 +676,34 @@ export function healCommand(): Command {
         }, cwd);
       }
 
+      // Persist run history so `pw-doctor report` can surface heal-runs.
+      // Skipped silently on schema failure; never crashes the heal flow.
+      const historyResult = writeRunHistory({
+        cwd,
+        runId,
+        trigger: options.ci ? 'ci' : isWatch ? 'watch' : 'cli',
+        startedAt: runStartedAt,
+        config: {
+          aiEnabled: config.ai.enabled && options.ai !== false,
+          autoApplyThreshold: config.repair.autoApplyThreshold,
+        },
+        results: {
+          totalSelectors: failures.length,
+          healthy: 0,
+          broken: failures.length,
+          repaired: repairs.length,
+          verified,
+          rolledBack: rolledBackCount,
+          needsManualReview: Math.max(0, failures.length - fixableCount - repairs.length),
+          skippedDynamic: 0,
+        },
+        repairs,
+        timing: { checkMs: 0, repairMs: 0, verifyMs: 0 },
+      });
+      if ('skipped' in historyResult && !options.ci) {
+        logger.warn(`Skipped run-history write: ${historyResult.skipped}`);
+      }
+
       if (!isWatch) {
         if (rolledBackCount > 0) {
           process.exit(EXIT_CODES.FIXES_FAILED);
@@ -678,7 +714,11 @@ export function healCommand(): Command {
         }
       }
 
-      // Step 6: Watch mode — stay alive and re-run on file changes
+      // Step 6: Watch mode — stay alive and re-run on file changes.
+      // For each change we run tests, then build a repair plan per failure
+      // (suggest mode only; `--apply` on watch is intentionally not honored
+      // to avoid the heal-modifies-file → watcher-refires loop. Run a
+      // one-shot `pw-doctor heal --apply` to actually patch.)
       if (isWatch) {
         startWatchMode(cwd, config.testDir, config.testMatch, async (changedFile) => {
           console.log(chalk.cyan(`Re-running tests for ${path.relative(cwd, changedFile)}...`));
@@ -689,13 +729,49 @@ export function healCommand(): Command {
           const newFailures = extractFailedSelectors(results);
           if (newFailures.length === 0) {
             console.log(chalk.green('All tests passing for this file.'));
-          } else {
-            console.log(chalk.red(`Found ${newFailures.length} broken selector(s) in changed file.`));
-            for (const f of newFailures) {
-              console.log(chalk.red(`  ${f.file}:${f.line} — ${f.selector}`));
-            }
+            return;
           }
+          console.log(chalk.red(`Found ${newFailures.length} broken selector(s).`));
+          for (const failure of newFailures) {
+            const html = findCapturedHtml(cwd, failure.file, failure.testName);
+            if (!html) {
+              console.log(chalk.gray(`  ${failure.file}:${failure.line} — ${failure.selector} (no DOM capture)`));
+              continue;
+            }
+            const plan = await buildRepairPlan(failure, html, {
+              autoApplyThreshold: config.repair.autoApplyThreshold,
+              suggestThreshold: config.repair.suggestThreshold,
+              aiAdapter,
+              contextCode: '',
+            });
+            if (!plan.bestCandidate) {
+              console.log(chalk.red(`  ${failure.file}:${failure.line} — ${failure.selector} (no candidates)`));
+              continue;
+            }
+            const bc = plan.bestCandidate.candidate;
+            console.log(
+              chalk.yellow(`  ${failure.file}:${failure.line} — ${failure.selector}`),
+            );
+            console.log(
+              chalk.green(`    → ${bc.method}('${bc.selector}') · ${bc.strategy} · ${bc.confidence}%`),
+            );
+          }
+          console.log(chalk.gray('Run `pw-doctor heal --apply` to write these fixes.'));
         });
       }
-    });
+}
+
+export function healCommand(): Command {
+  return new Command('heal')
+    .description('Detect broken selectors and propose fixes')
+    .option('--dry-run', 'Show proposed fixes without applying (default)', true)
+    .option('--apply', 'Apply fixes meeting confidence threshold')
+    .option('--min-confidence <n>', 'Minimum confidence to apply', '85')
+    .option('--max-files <n>', 'Maximum files to process')
+    .option('--ci', 'CI mode: JSON output, no interactive prompts')
+    .option('--interactive', 'Interactively approve/edit/skip each fix')
+    .option('--no-ai', 'Disable AI repair even if configured')
+    .option('--watch', 'Watch test files for changes and re-run heal')
+    .option('--preview-ai-payload', 'Show AI payload without sending')
+    .action(executeHeal);
 }

@@ -13,13 +13,19 @@ import { verifyAgainstDom } from './dom-hard-gate.js';
 export interface GenerateRepairOptions {
   aiAdapter?: AiRepairAdapter;
   contextCode?: string;
+  /**
+   * When set, skip the AI call if any heuristic candidate already meets
+   * this confidence. Saves cost and latency when a heuristic clearly wins.
+   * Pass `repair.autoApplyThreshold` from config.
+   */
+  aiShortCircuitThreshold?: number;
 }
 
 export async function generateRepairCandidates(
   failure: SelectorFailure,
   html: string,
   options?: GenerateRepairOptions,
-): Promise<{ candidates: RepairCandidate[]; aiTokensUsed?: number; aiInputTokens?: number; aiOutputTokens?: number }> {
+): Promise<{ candidates: RepairCandidate[]; aiTokensUsed?: number; aiInputTokens?: number; aiOutputTokens?: number; aiSkipped?: 'heuristic_sufficient' }> {
   const analyzer = new DomAnalyzer(html);
   const candidates: RepairCandidate[] = [];
 
@@ -56,11 +62,19 @@ export async function generateRepairCandidates(
   });
   if (anchorCandidate) candidates.push(anchorCandidate);
 
-  // Strategy 5: AI-powered repair (when adapter is provided and HTML is available)
+  // Fallback ladder: skip AI when a heuristic already clears the threshold.
+  let aiSkipped: 'heuristic_sufficient' | undefined;
+  const threshold = options?.aiShortCircuitThreshold;
+  if (threshold !== undefined && candidates.some((c) => c.confidence >= threshold)) {
+    aiSkipped = 'heuristic_sufficient';
+  }
+
+  // Strategy 5: AI-powered repair (when adapter is provided, HTML is available,
+  // and no heuristic already clears the short-circuit threshold).
   let aiTokensUsed: number | undefined;
   let aiInputTokens: number | undefined;
   let aiOutputTokens: number | undefined;
-  if (options?.aiAdapter && html) {
+  if (options?.aiAdapter && html && !aiSkipped) {
     try {
       const aiResponse = await options.aiAdapter.suggestRepair({
         failedSelector: failure.selector,
@@ -83,6 +97,7 @@ export async function generateRepairCandidates(
         const domGate = verifyAgainstDom(
           { selector: aiCandidate.selector, method: aiCandidate.method },
           analyzer,
+          { expectedAction: failure.action },
         );
         if (!domGate.passes) continue;
 
@@ -106,7 +121,7 @@ export async function generateRepairCandidates(
     }
   }
 
-  return { candidates, aiTokensUsed, aiInputTokens, aiOutputTokens };
+  return { candidates, aiTokensUsed, aiInputTokens, aiOutputTokens, aiSkipped };
 }
 
 export interface RepairPlan {
@@ -116,6 +131,7 @@ export interface RepairPlan {
   aiTokensUsed?: number;
   aiInputTokens?: number;
   aiOutputTokens?: number;
+  aiSkipped?: 'heuristic_sufficient';
 }
 
 export async function buildRepairPlan(
@@ -123,9 +139,10 @@ export async function buildRepairPlan(
   html: string,
   options?: { autoApplyThreshold?: number; suggestThreshold?: number; aiAdapter?: AiRepairAdapter; contextCode?: string },
 ): Promise<RepairPlan> {
-  const { candidates, aiTokensUsed, aiInputTokens, aiOutputTokens } = await generateRepairCandidates(failure, html, {
+  const { candidates, aiTokensUsed, aiInputTokens, aiOutputTokens, aiSkipped } = await generateRepairCandidates(failure, html, {
     aiAdapter: options?.aiAdapter,
     contextCode: options?.contextCode,
+    aiShortCircuitThreshold: options?.autoApplyThreshold,
   });
   const ranked = rankCandidates(candidates, options);
   const best = selectBestCandidate(candidates, options);
@@ -137,5 +154,6 @@ export async function buildRepairPlan(
     aiTokensUsed,
     aiInputTokens,
     aiOutputTokens,
+    aiSkipped,
   };
 }

@@ -79,6 +79,18 @@ describe('validateAiSelector', () => {
     expect(result.reason).toContain('Function');
   });
 
+  it('rejects a selector containing ${} template literal expression', () => {
+    const result = validateAiSelector('div${process.env.SECRET}', 'locator');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('template');
+  });
+
+  it('rejects a selector with ${} even inside escape sequences', () => {
+    const result = validateAiSelector('${alert(1)}', 'locator');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('template');
+  });
+
   it('rejects an unknown locator method', () => {
     const result = validateAiSelector('#submit', 'querySelector');
     expect(result.valid).toBe(false);
