@@ -9,14 +9,35 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs so rapid pushes don't stack up the Node matrix.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Full Node 20+22 matrix on main pushes; PRs run Node 22 only (the engines
+  # floor is still exercised on main before release, so PRs needn't pay 2x).
+  matrix-config:
+    runs-on: ubuntu-latest
+    outputs:
+      node: ${{ steps.pick.outputs.node }}
+    steps:
+      - id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "node=['20','22']" >> "$GITHUB_OUTPUT"
+          else
+            echo "node=['22']" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-test:
     name: build / typecheck / lint / test (Node ${{ matrix.node }})
+    needs: matrix-config
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22']
+        node: ${{ fromJSON(needs.matrix-config.outputs.node) }}
     steps:
       - uses: actions/checkout@v4
 
