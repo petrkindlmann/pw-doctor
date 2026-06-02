@@ -60,11 +60,15 @@ jobs:
         run: npm run lint
 
       # Run vitest directly (not via `turbo run test`) so turbo's output
-      # capture is out of the path — vitest stalled at startup under turbo on
-      # the Linux runner. Build already ran through turbo above.
-      - name: Test
+      # capture is out of the path. Core suite first, then the isolated
+      # subprocess/Playwright e2e files in a separate process.
+      - name: Test (core)
         run: npm run test --workspace packages/cli
-        timeout-minutes: 10
+        timeout-minutes: 8
+
+      - name: Test (e2e)
+        run: npm run test:e2e --workspace packages/cli
+        timeout-minutes: 8
 
   # Runs only on main pushes — verifies the CLI tarball builds cleanly
   # and installs in a clean project before any release.
