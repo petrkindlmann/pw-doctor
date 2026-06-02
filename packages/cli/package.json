@@ -32,8 +32,8 @@
   },
   "scripts": {
     "build": "tsc && node scripts/bundle-shared.mjs",
-    "test": "vitest run",
-    "test:e2e": "RUN_E2E=1 vitest run tests/reporter/pw-doctor-fixture.test.ts tests/e2e/heal-cli.test.ts tests/e2e/check.test.ts",
+    "test": "node scripts/run-tests.mjs",
+    "test:e2e": "RUN_E2E=1 node scripts/run-tests.mjs tests/reporter/pw-doctor-fixture.test.ts tests/e2e/heal-cli.test.ts tests/e2e/check.test.ts",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit"
