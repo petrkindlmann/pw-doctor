@@ -61,6 +61,7 @@ jobs:
 
       - name: Test
         run: npm test
+        timeout-minutes: 10
 
   # Runs only on main pushes — verifies the CLI tarball builds cleanly
   # and installs in a clean project before any release.
