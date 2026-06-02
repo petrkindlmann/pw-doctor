@@ -36,8 +36,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Run vitest directly (not via `turbo run test`) so turbo's output
+      # capture is out of the path — vitest stalled at startup under turbo on
+      # the Linux runner. Build already ran through turbo above.
       - name: Test
-        run: npm test
+        run: npm run test --workspace packages/cli
         timeout-minutes: 10
 
       - name: Prepare publish build

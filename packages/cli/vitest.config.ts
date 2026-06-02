@@ -11,10 +11,15 @@ export default defineConfig({
     testTimeout: 30000,
     hookTimeout: 30000,
     teardownTimeout: 10000,
-    // Use the forks pool: these tests spawn child processes (execFileSync) and
-    // import heavy modules (@playwright/test); the worker-threads pool can hang
-    // on teardown in constrained Linux CI runners, which silently stalled the
-    // release job. Forks terminate cleanly.
+    // These tests spawn child processes (execFileSync) and import heavy modules
+    // (@playwright/test). The worker-threads pool hung at startup/teardown on
+    // constrained Linux CI runners (vitest produced no output and stalled).
+    // A single forked process avoids the parallel-IPC deadlock and terminates
+    // cleanly; the suite runs in ~15s so we don't need parallelism.
     pool: 'forks',
+    poolOptions: {
+      forks: { singleFork: true },
+    },
+    fileParallelism: false,
   },
 });
