@@ -68,6 +68,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
+    "@pw-doctor/shared": "*",
     "@types/babel__traverse": "7.28.0",
     "@types/node": "^22.0.0",
     "domhandler": "5.0.3",
