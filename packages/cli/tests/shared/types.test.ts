@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ConfigSchema } from '@pw-doctor/shared';
+import { ConfigSchema, STRIP_EVENT_HANDLER_ATTRIBUTES } from '@pw-doctor/shared';
 import type { AiRepairInput, AiRepairResponse, PwDoctorConfig } from '@pw-doctor/shared';
 
 describe('shared types and schemas', () => {
@@ -10,7 +10,9 @@ describe('shared types and schemas', () => {
     expect(config.ai.enabled).toBe(false);
     expect(config.redact.preset).toBe('moderate');
     expect(config.redact.patterns).toEqual([]);
-    expect(config.redact.stripAttributes).toEqual(['style', 'onclick', 'onload']);
+    // Default strips the FULL inline event-handler set (not a narrowed list)
+    // so the out-of-box AI payload can never carry inline JS.
+    expect(config.redact.stripAttributes).toEqual([...STRIP_EVENT_HANDLER_ATTRIBUTES]);
     expect(config.redact.preserveAttributes).toEqual([]);
     expect(config.redact.stripSelectors).toEqual([]);
     expect(config.redact.maxDepth).toBe(20);

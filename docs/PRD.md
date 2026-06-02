@@ -97,7 +97,7 @@ Full flag and exit-code reference: [README.md](../README.md).
 
 ## 8. Repair strategies
 
-All available strategies generate candidates in parallel; the ranker picks the best by `confidence + method resilience`.
+All applicable strategies generate candidates; the ranker picks the best by `confidence + method resilience − fragility penalty`. The four heuristic strategies are fast synchronous calls; the AI strategy is the only async one and is skipped when a heuristic already clears the threshold.
 
 | # | Strategy | Generates a candidate when | Typical confidence |
 |---|---|---|---|
@@ -107,7 +107,7 @@ All available strategies generate candidates in parallel; the ranker picks the b
 | 4 | `anchor_match` | A stable landmark (heading, `<nav>`, `[data-testid]`) is close enough | up to 0.85 |
 | 5 | `ai` | Adapter configured + DOM available + consent granted | up to 0.95 (gated by DOM check) |
 
-Ranking sorts on `confidence + METHOD_RESILIENCE[method]` and bucketizes into `auto_apply | suggest | skip` based on `autoApplyThreshold` and `suggestThreshold`. Heuristics and AI are **not** gated by a fallback ladder — both feed the same candidate pool. AI shortcut is a TODO if cost becomes the dominant concern (see [../TODO.md](../TODO.md)).
+Ranking computes a final score `confidence + METHOD_RESILIENCE[method] − round(fragility × 0.25)` and bucketizes into `auto_apply | suggest | skip` against `autoApplyThreshold` and `suggestThreshold` (the bucket gates on the final score, not raw confidence). Ties break deterministically: resilience → strategy priority → selector. A fallback ladder **is** in effect — when any heuristic candidate already clears `autoApplyThreshold`, the AI call is skipped to save cost and latency.
 
 Thresholds are configurable: `--min-confidence` plus `repair.autoApplyThreshold` / `repair.suggestThreshold` in config.
 

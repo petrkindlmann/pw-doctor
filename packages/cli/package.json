@@ -1,6 +1,6 @@
 {
   "name": "pw-doctor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "AI-powered Playwright test selector maintenance",
   "repository": {
@@ -15,6 +15,9 @@
   "bin": {
     "pw-doctor": "./dist/bin/pw-doctor.js"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -28,7 +31,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/bundle-shared.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings 0",
@@ -44,7 +47,6 @@
     "@babel/traverse": "^7.26.0",
     "@babel/types": "^7.26.0",
     "@clack/prompts": "^0.10.0",
-    "@pw-doctor/shared": "*",
     "chalk": "^5.4.0",
     "cheerio": "1.0.0",
     "chokidar": "5.0.0",
@@ -56,9 +58,6 @@
     "recast": "^0.23.9",
     "zod": "^3.24.0"
   },
-  "bundleDependencies": [
-    "@pw-doctor/shared"
-  ],
   "peerDependencies": {
     "@playwright/test": ">=1.40.0"
   },
@@ -80,14 +79,22 @@
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md"
   ],
   "keywords": [
     "playwright",
+    "playwright-test",
     "testing",
+    "e2e",
+    "test-maintenance",
+    "flaky-tests",
     "selectors",
-    "self-healing",
-    "ast"
+    "locator",
+    "getByRole",
+    "cli",
+    "ai",
+    "codemod"
   ],
   "license": "MIT"
 }

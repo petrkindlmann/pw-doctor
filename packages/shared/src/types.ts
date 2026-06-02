@@ -55,6 +55,26 @@ export interface RepairCandidate {
   confidence: number;
   strategy: RepairStrategy;
   reasoning: string;
+  /**
+   * Structured, human-readable factors that explain the score. Each entry is a
+   * single contribution (e.g. `unique match +20`, `fragile nth-of-type -15`).
+   * The free-text `reasoning` is the headline; `reasons` is the breakdown the
+   * reporter renders so a QA engineer can see *why* a candidate ranked where it
+   * did. Optional for backward compatibility.
+   */
+  reasons?: string[];
+  /**
+   * Fragility of the produced selector on the same 0..100 scale as
+   * `fragility-scorer` (higher = more fragile). Used by the ranker to
+   * down-weight positional / hashed-class / long-chain selectors.
+   */
+  fragility?: number;
+  /**
+   * Accessible name for a `getByRole` candidate. When present the patcher emits
+   * `getByRole('<role>', { name: '<nameOption>' })` instead of a bare role,
+   * which is both more robust and what Playwright recommends.
+   */
+  nameOption?: string;
   elementMatch: {
     tag: string;
     text: string;
@@ -140,7 +160,13 @@ export interface PwDoctorConfig {
   };
   redact: {
     preset: 'moderate' | 'strict' | 'minimal';
-    patterns: RegExp[];
+    /**
+     * Extra redaction patterns as RegExp *source strings* (config is JSON/YAML,
+     * which cannot carry a RegExp instance). Compiled — and validated — at the
+     * redaction call-site. A pattern that fails to compile is dropped with a
+     * warning rather than crashing the run.
+     */
+    patterns: string[];
     stripAttributes: string[];
     preserveAttributes: string[];
     stripSelectors: string[];

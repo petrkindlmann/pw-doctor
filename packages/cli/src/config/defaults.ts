@@ -1,5 +1,5 @@
 import type { PwDoctorConfig } from '@pw-doctor/shared';
-import { DEFAULT_AI_MODEL } from '@pw-doctor/shared';
+import { DEFAULT_AI_MODEL, STRIP_EVENT_HANDLER_ATTRIBUTES } from '@pw-doctor/shared';
 
 export const DEFAULT_CONFIG: PwDoctorConfig = {
   testDir: './tests',
@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG: PwDoctorConfig = {
   redact: {
     preset: 'moderate',
     patterns: [],
-    stripAttributes: ['style', 'onclick', 'onload'],
+    stripAttributes: [...STRIP_EVENT_HANDLER_ATTRIBUTES],
     preserveAttributes: [],
     stripSelectors: [],
     maxDepth: 20,

@@ -1,18 +1,38 @@
 // packages/cli/src/report/json-reporter.ts
 import crypto from 'node:crypto';
-import type { CheckResult, RunHistory, TriggerSource } from '@pw-doctor/shared';
+import type { SelectorInfo, RunHistory, TriggerSource } from '@pw-doctor/shared';
 import { SCHEMA_VERSION } from '@pw-doctor/shared';
 
+/**
+ * Config values the report records about the run. `check` resolves these from
+ * the user's config and passes them in, so the report reflects reality instead
+ * of hardcoded placeholders.
+ */
+export interface ReportConfig {
+  aiEnabled: boolean;
+  autoApplyThreshold: number;
+}
+
+/**
+ * Build the run-history record for a `check` run. `check` does STATIC fragility
+ * scoring only — it never runs the test suite — so it cannot observe whether a
+ * selector is healthy or broken at runtime. The structural counters below are
+ * therefore intentionally fixed:
+ *
+ *   - `healthy` / `broken`            — always 0 (no runtime validation here)
+ *   - `repaired` / `verified` /
+ *     `rolledBack`                    — always 0 (check never patches or verifies)
+ *
+ * Honest signal lives in `totalSelectors`, `skippedDynamic`, and the fragility
+ * scores carried on each `SelectorInfo` (surfaced separately by the reporter).
+ */
 export function buildJsonReport(
-  results: CheckResult[],
+  selectors: SelectorInfo[],
   trigger: TriggerSource,
+  config: ReportConfig,
   timing?: { checkMs: number },
 ): RunHistory {
-  const healthy = results.filter((r) => r.status === 'healthy').length;
-  const broken = results.filter((r) => r.status === 'broken').length;
-  const skippedDynamic = results.filter(
-    (r) => r.selector.isDynamic,
-  ).length;
+  const skippedDynamic = selectors.filter((s) => s.isDynamic).length;
 
   return {
     schemaVersion: SCHEMA_VERSION as 1,
@@ -20,14 +40,16 @@ export function buildJsonReport(
     timestamp: new Date().toISOString(),
     trigger,
     config: {
-      aiEnabled: false,
-      autoApplyThreshold: 85,
+      aiEnabled: config.aiEnabled,
+      autoApplyThreshold: config.autoApplyThreshold,
     },
     git: null, // populated by caller if in a git repo
     results: {
-      totalSelectors: results.length,
-      healthy,
-      broken,
+      totalSelectors: selectors.length,
+      // healthy/broken require a test run; check does static scoring only.
+      healthy: 0,
+      broken: 0,
+      // check never repairs, verifies, or rolls back — these are structural 0s.
       repaired: 0,
       verified: 0,
       rolledBack: 0,

@@ -4,21 +4,21 @@ Known follow-ups. Pulled from recent commits and post-Phase-3 state. Move items 
 
 ## Soon
 
-- [ ] **Publish 0.1.0 to npm.** Version is still `0.0.2`; tag a real release once docs land.
-- [ ] **CI workflow.** No GitHub Actions yet — add typecheck + vitest matrix (Node 20, 22) and a release-please / changesets pipeline.
-- [ ] **`npm run lint` is `echo ok`.** Wire up `eslint` (already a devDep, and `eslint-plugin-security` is installed).
-- [ ] **Coverage gate.** Vitest is in; no coverage threshold enforced.
-- [ ] **Confirm Phase 3 follow-ups.** The "Fix 12 bugs found by exploratory testing" commit closed a wave — diff it against any open notes to make sure nothing leaked.
+- [ ] **Publish 0.2.0 to npm.** Tag `v0.2.0` to trigger the release workflow (publishes with provenance, gated by the install-and-run smoke test). Supersedes the broken `0.0.2`.
+- [x] ~~**CI workflow.**~~ Node 20/22 matrix build+typecheck+lint+test; release workflow on `v*` tags; `package-smoke` now installs the real tarball and runs `--help`.
+- [x] ~~**`npm run lint`.**~~ Real `eslint` + `eslint-plugin-security`, `--max-warnings 0`.
+- [ ] **Coverage gate.** Vitest is in (542 tests); no coverage threshold enforced yet.
+- [ ] **Live broken-detection in `check`.** Today `check` is static fragility scoring only (`--fail-on-fragile`). Real broken-vs-healthy detection would need a test run / reporter hook.
 
 ## From the May 2026 Codex doc review
 
-- [ ] **Heal writes `RunHistory`.** Currently only `check` writes; `report` therefore surfaces check-runs only. Adding heal-side persistence will let `report` show repair history.
-- [ ] **AI fallback ladder.** Today AI runs in parallel with heuristics whenever an adapter + DOM exist. Short-circuit before the AI call when a heuristic already clears `autoApplyThreshold` to cut cost.
-- [ ] **AI gate completeness.** Selector validator does not block `${}` template-literal escapes and does not parse the selector as a Playwright locator expression. Add both.
-- [ ] **Tag/role compatibility in DOM hard gate.** Current gate only checks "exactly 1 visible". Confirm the matched element's tag/role is compatible with the original action (e.g. `click` → interactive element).
+- [x] ~~**Heal writes `RunHistory`.**~~ `heal` persists run history; `report` surfaces heal-runs.
+- [x] ~~**AI fallback ladder.**~~ AI is skipped when a heuristic already clears `autoApplyThreshold`.
+- [x] ~~**AI gate completeness.**~~ Validator blocks backticks/`;`/`${}`/`eval`/`require`/`import`/newlines and unknown methods.
+- [x] ~~**Tag/role compatibility in DOM hard gate.**~~ Gate checks action compatibility (click→interactive, fill→form field, etc.).
 - [ ] **Reporter auto-wiring in `init`.** Today `init` only prints instructions. Consider an opt-in `--write-config` that edits `playwright.config.ts` via AST.
-- [ ] **`watch` as a top-level command.** Either register `pw-doctor watch` with the same semantics as `heal --watch`, or remove it from the design.
-- [ ] **Watch behavior.** `heal --watch` callback currently re-runs tests and prints failures only — it does not heal. Either route through the full pipeline or document and rename the flag.
+- [x] ~~**`watch` as a top-level command.**~~ Registered; shares options with `heal` via `addHealOptions`.
+- [x] ~~**Watch behavior.**~~ Watch callback runs the full repair pipeline in suggest mode.
 
 ## Repair quality
 
@@ -47,10 +47,11 @@ Known follow-ups. Pulled from recent commits and post-Phase-3 state. Move items 
 - [x] ~~**CHANGELOG.md.**~~ Seeded — automate via conventional commits when CI lands.
 - [x] ~~**SECURITY.md.**~~ Disclosure policy + full control catalogue shipped.
 - [ ] **`packages/cli/README.md`** is the npm-facing readme — keep it in sync with root README on each release.
-- [ ] **`ai.model` default.** Config points at `claude-sonnet-4-20250514`; bump to `claude-sonnet-4-6` and consider exposing a single source-of-truth constant in `@pw-doctor/shared`.
+- [x] ~~**`ai.model` default.**~~ `DEFAULT_AI_MODEL` (`claude-sonnet-4-6`) is the single source of truth in `@pw-doctor/shared`.
+- [ ] **`redact.patterns` migration.** As of 0.2.0 this config is `string[]` (RegExp source strings), not `RegExp[]`. The old shape was unsatisfiable from JSON; no published config used it, but note it in upgrade guidance.
 
 ## Tech debt
 
-- [ ] **`@pw-doctor/shared` is bundled into `cli`** (`bundleDependencies`). Re-evaluate once a second consumer exists; until then the indirection has no upside.
+- [x] ~~**`@pw-doctor/shared` packaging.**~~ Bundled into `dist/` at build time via esbuild (specifiers rewritten to relative paths); removed from `dependencies`/`bundleDependencies`. The old `bundleDependencies` approach shipped a broken tarball.
 - [ ] **Pinned exact versions** for `@anthropic-ai/sdk`, `openai`, `cheerio`, `chokidar`, `domhandler`. Audit whether the pins are deliberate (SDK breakage risk) or accidental.
 - [ ] **`dist/` is committed to git history but git-ignored going forward** — confirm npm-publish flow rebuilds from source and doesn't ship a stale `dist`.

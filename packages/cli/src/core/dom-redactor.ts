@@ -1,5 +1,9 @@
 import * as cheerio from 'cheerio';
-import { REDACT_SENSITIVE_PATTERNS, SELECTOR_RELEVANT_ATTRIBUTES } from '@pw-doctor/shared';
+import {
+  REDACT_SENSITIVE_PATTERNS,
+  SELECTOR_RELEVANT_ATTRIBUTES,
+  STRIP_EVENT_HANDLER_ATTRIBUTES,
+} from '@pw-doctor/shared';
 import type { AnyNode, Element } from 'domhandler';
 
 export interface RedactionOptions {
@@ -7,7 +11,11 @@ export interface RedactionOptions {
   stripAttributes?: string[];
   preserveAttributes?: string[];
   stripSelectors?: string[];
-  customPatterns?: RegExp[];
+  /**
+   * Extra patterns to redact. Accepts compiled RegExps or RegExp source
+   * strings (config carries strings). Uncompilable strings are skipped.
+   */
+  customPatterns?: Array<RegExp | string>;
   maxDepth?: number;
   maxSize?: number;
 }
@@ -22,17 +30,38 @@ export interface RedactionResult {
   };
 }
 
-const DEFAULT_STRIP_ATTRIBUTES = [
-  'style',
-  'onclick', 'ondblclick', 'onmousedown', 'onmouseup', 'onmouseover',
-  'onmousemove', 'onmouseout', 'onkeydown', 'onkeypress', 'onkeyup',
-  'onload', 'onunload', 'onsubmit', 'onreset', 'onfocus', 'onblur',
-  'onchange', 'oninput', 'onscroll', 'onerror', 'onresize',
-  'oncontextmenu', 'ondrag', 'ondragend', 'ondragenter', 'ondragleave',
-  'ondragover', 'ondragstart', 'ondrop',
-];
+// Single source of truth for the inline event-handler / style strip list.
+const DEFAULT_STRIP_ATTRIBUTES: readonly string[] = STRIP_EVENT_HANDLER_ATTRIBUTES;
 
 const SELECTOR_RELEVANT_SET = new Set<string>(SELECTOR_RELEVANT_ATTRIBUTES);
+
+/**
+ * Compile RegExp-or-string custom patterns into fresh stateless RegExps.
+ * Strings that fail to compile are skipped (callers may surface a warning).
+ */
+function compileCustomPatterns(
+  patterns: Array<RegExp | string> | undefined,
+): RegExp[] {
+  if (!patterns) return [];
+  const out: RegExp[] = [];
+  for (const p of patterns) {
+    try {
+      out.push(p instanceof RegExp ? new RegExp(p.source, p.flags) : new RegExp(p, 'g'));
+    } catch {
+      // Drop an uncompilable user pattern rather than crash the redaction pass.
+    }
+  }
+  return out;
+}
+
+/**
+ * Input types whose `value` is safe to keep (it is selector-relevant and not a
+ * secret carrier). Every other input — notably `hidden`, `password`, and
+ * untyped — has its `value` redacted before the DOM leaves the machine.
+ */
+const VALUE_SAFE_INPUT_TYPES = new Set([
+  'button', 'submit', 'reset', 'checkbox', 'radio', 'image', 'file',
+]);
 
 /**
  * Creates fresh RegExp copies from the shared patterns to avoid stateful lastIndex issues
@@ -44,8 +73,24 @@ function freshPatterns(): RegExp[] {
   );
 }
 
+// Matches http(s) URLs that carry a query string or fragment — the part that
+// commonly leaks tokens, emails, and ids. Applied to text and non-href/src
+// attribute values (href/src/action are already reduced to bare domains).
+const URL_WITH_PARAMS = /\bhttps?:\/\/[^\s"'<>]+[?#][^\s"'<>]*/gi;
+
+function stripUrlParams(value: string, stats: RedactionResult['stats']): string {
+  URL_WITH_PARAMS.lastIndex = 0;
+  return value.replace(URL_WITH_PARAMS, (match) => {
+    const cut = match.search(/[?#]/);
+    stats.patternsRedacted++;
+    return cut > 0 ? `${match.slice(0, cut)}?[REDACTED]` : '[REDACTED]';
+  });
+}
+
 function redactString(value: string, patterns: RegExp[], stats: RedactionResult['stats']): string {
-  let result = value;
+  // Strip URL query strings/fragments first so a token living only in a query
+  // param is gone before the more specific token patterns run.
+  let result = stripUrlParams(value, stats);
   for (const pattern of patterns) {
     pattern.lastIndex = 0;
     const replaced = result.replace(pattern, '[REDACTED]');
@@ -105,12 +150,14 @@ export function redactHtml(html: string, options?: RedactionOptions): RedactionR
   };
 
   const $ = cheerio.load(html);
-  const customPatterns = options?.customPatterns
-    ? options.customPatterns.map((p) => new RegExp(p.source, p.flags))
-    : [];
+  const customPatterns = compileCustomPatterns(options?.customPatterns);
   const allPatterns = [...freshPatterns(), ...customPatterns];
 
-  const stripAttrs = options?.stripAttributes ?? DEFAULT_STRIP_ATTRIBUTES;
+  // Merge the caller's strip list with the built-in event-handler set rather
+  // than replacing it — a narrow user list must never re-enable inline JS.
+  const stripAttrs = options?.stripAttributes
+    ? Array.from(new Set([...DEFAULT_STRIP_ATTRIBUTES, ...options.stripAttributes]))
+    : DEFAULT_STRIP_ATTRIBUTES;
   const preserveAttrs = new Set(options?.preserveAttributes ?? []);
 
   // Remove custom selectors
@@ -149,16 +196,20 @@ export function redactHtml(html: string, options?: RedactionOptions): RedactionR
   // Remove HTML comments
   removeComments($, $.root()[0]!);
 
-  // Redact password input values
-  $('input[type="password"]').each((_, el) => {
+  // Redact the `value` of any input that could carry a secret (password,
+  // hidden CSRF/session fields, untyped/text fields). Only inputs whose type
+  // makes the value selector-relevant and non-sensitive keep it.
+  $('input').each((_, el) => {
     const $el = $(el);
-    if ($el.attr('value') !== undefined) {
+    if ($el.attr('value') === undefined) return;
+    const type = ($el.attr('type') ?? 'text').toLowerCase();
+    if (!VALUE_SAFE_INPUT_TYPES.has(type)) {
       $el.attr('value', '[REDACTED]');
       stats.patternsRedacted++;
     }
   });
 
-  // Strip href/src/action down to domain only
+  // Strip href/src/action down to domain only.
   $('[href], [src], [action]').each((_, el) => {
     const $el = $(el);
     for (const attr of ['href', 'src', 'action'] as const) {

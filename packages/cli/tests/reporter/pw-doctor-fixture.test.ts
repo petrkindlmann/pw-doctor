@@ -1,7 +1,9 @@
 // packages/cli/tests/reporter/pw-doctor-fixture.test.ts
 import { describe, it, expect } from 'vitest';
 
-describe('pw-doctor-fixture', () => {
+// Importing @playwright/test is heavy; under full-suite parallel load the first
+// import can exceed the 5s default. Generous timeout avoids CI flakes.
+describe('pw-doctor-fixture', { timeout: 30000 }, () => {
   it('exports test and expect', async () => {
     const mod = await import('../../src/reporter/pw-doctor-fixture.js');
     expect(mod.test).toBeDefined();

@@ -1,6 +1,6 @@
 // packages/shared/src/schemas.ts
 import { z } from 'zod';
-import { DEFAULT_AI_MODEL } from './constants.js';
+import { DEFAULT_AI_MODEL, STRIP_EVENT_HANDLER_ATTRIBUTES } from './constants.js';
 
 export const RunHistorySchema = z.object({
   schemaVersion: z.literal(1),
@@ -91,10 +91,17 @@ export const ConfigSchema = z.object({
   redact: z
     .object({
       preset: z.enum(['moderate', 'strict', 'minimal']).default('moderate'),
-      patterns: z.array(z.instanceof(RegExp)).default([]),
+      // RegExp *source strings* — config is JSON/YAML and cannot carry a
+      // RegExp instance. Each is compiled (and validated) at the redaction
+      // call-site; an uncompilable pattern is dropped with a warning.
+      patterns: z.array(z.string()).default([]),
+      // Defaults to the full inline event-handler set (shared with the
+      // redactor) so the out-of-box payload never carries inline JS. A
+      // user-supplied list is merged with — not substituted for — this set
+      // at the call-site.
       stripAttributes: z
         .array(z.string())
-        .default(['style', 'onclick', 'onload']),
+        .default([...STRIP_EVENT_HANDLER_ATTRIBUTES]),
       preserveAttributes: z.array(z.string()).default([]),
       stripSelectors: z.array(z.string()).default([]),
       maxDepth: z.number().default(20),

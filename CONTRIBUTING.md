@@ -15,7 +15,7 @@ Requires Node ≥ 20.
 
 ```bash
 cd packages/cli
-npx vitest run        # 417 tests across 43 files
+npx vitest run        # 542 tests across 54 files
 npx vitest            # watch mode
 npx tsc --noEmit      # typecheck
 ```

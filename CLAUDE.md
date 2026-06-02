@@ -2,7 +2,7 @@
 
 CLI that repairs broken Playwright selectors. Runs the user's failing tests, captures live DOM at the failure point, picks a replacement selector (heuristic → AI), and AST-patches the test file. Default `--dry-run`.
 
-Status: published as `pw-doctor` on npm (v0.0.2). 43 test files, 417 tests, clean build.
+Status: `0.2.0` prepared for release (supersedes the broken `0.0.2` on npm). 54 test files, 542 tests, clean build/typecheck/lint. `@pw-doctor/shared` is esbuild-bundled into the CLI `dist/` at build time (no longer a runtime dep).
 
 ## Non-negotiable rules
 

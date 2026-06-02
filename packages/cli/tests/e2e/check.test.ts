@@ -4,7 +4,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 
-describe('pw-doctor check (E2E)', () => {
+// Each case spawns the built node binary (cold start + bundled-shared resolve);
+// under full-suite parallel load this can exceed the 5s default, so give the
+// subprocess-driven E2E a generous timeout to avoid CI flakes.
+describe('pw-doctor check (E2E)', { timeout: 30000 }, () => {
   let tmpDir: string;
   const cliBin = path.resolve(
     import.meta.dirname,

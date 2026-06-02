@@ -2,9 +2,11 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PW_DOCTOR_DIR } from '@pw-doctor/shared';
+import { EXIT_CODES, PW_DOCTOR_DIR } from '@pw-doctor/shared';
 import type { RunHistory, RepairRecord } from '@pw-doctor/shared';
 import { assertWithinRoot } from '../utils/safe-path.js';
+import { loadConfig } from '../config/loader.js';
+import { logger } from '../utils/logger.js';
 
 export interface AggregatedReport {
   generatedAt: string;
@@ -334,33 +336,46 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function getDefaultOutputPath(cwd: string, format: string): string {
+function getDefaultOutputPath(cwd: string, format: string, outputDir: string): string {
   const ext = format === 'markdown' ? 'md' : format;
-  return path.join(cwd, PW_DOCTOR_DIR, 'reports', `report.${ext}`);
+  return path.resolve(cwd, outputDir, `report.${ext}`);
 }
 
 export function reportCommand(): Command {
   return new Command('report')
     .description('Generate a report from run history')
-    .option('--format <type>', 'Output format: json, html, or markdown', 'html')
+    // No commander-level defaults for format/output: the resolved config
+    // supplies the defaults, and these flags override it only when present.
+    .option('--format <type>', 'Output format: json, html, or markdown (default: config.report.format)')
     .option('--output <path>', 'Output file path')
     .option('--last <n>', 'Include last N runs', '10')
     .action(async (options) => {
       const cwd = process.cwd();
-      const format: string = options.format;
       const last = parseInt(options.last, 10) || 10;
 
+      // Load config so `report.format` / `report.outputDir` act as defaults.
+      let config;
+      try {
+        config = await loadConfig(cwd);
+      } catch (err) {
+        logger.error(`Invalid configuration: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(EXIT_CODES.TOOL_ERROR);
+      }
+
+      // CLI --format overrides config.report.format.
+      const format: string = options.format ?? config.report.format;
+
       if (!['json', 'html', 'markdown'].includes(format)) {
-        console.error(`Invalid format: ${format}. Must be json, html, or markdown.`);
-        process.exit(2);
+        logger.error(`Invalid format: ${format}. Must be json, html, or markdown.`);
+        process.exit(EXIT_CODES.TOOL_ERROR);
       }
 
       const historyDir = path.join(cwd, PW_DOCTOR_DIR, 'history', 'runs');
       const runs = loadRunHistory(historyDir, last);
 
       if (runs.length === 0) {
-        console.log('No run history found. Run `pw-doctor heal` first.');
-        process.exit(0);
+        logger.info('No run history found. Run `pw-doctor heal` first.');
+        process.exit(EXIT_CODES.HEALTHY);
       }
 
       const report = aggregateRuns(runs);
@@ -374,14 +389,17 @@ export function reportCommand(): Command {
         content = generateHtmlReport(report);
       }
 
+      // CLI --output overrides config.report.outputDir.
       const outputPath = options.output
         ? path.resolve(cwd, options.output)
-        : getDefaultOutputPath(cwd, format);
+        : getDefaultOutputPath(cwd, format, config.report.outputDir);
 
       assertWithinRoot(cwd, outputPath);
       fs.mkdirSync(path.dirname(outputPath), { recursive: true, mode: 0o700 });
       fs.writeFileSync(outputPath, content, { mode: 0o600 });
 
-      console.log(`Report written to ${path.relative(cwd, outputPath)}`);
+      // Report body lines (chalk tables / file content) stay on raw console;
+      // this status line is operational, so route it through the logger.
+      logger.info(`Report written to ${path.relative(cwd, outputPath)}`);
     });
 }

@@ -4,6 +4,84 @@ All notable changes to pw-doctor are recorded here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-02
+
+Production-readiness audit and the fix for a packaging defect that made every
+prior published build non-functional. **If you installed `pw-doctor@0.0.2`,
+upgrade — that version (and the unreleased 0.1.0) crashed on every command.**
+
+### Fixed
+- **Install blocker (critical):** the published tarball never bundled the
+  internal `@pw-doctor/shared` package (a `private` workspace symlink that
+  `bundleDependencies` cannot vendor), so every command crashed on install with
+  `ERR_MODULE_NOT_FOUND`. `@pw-doctor/shared` is now bundled into `dist/` at
+  build time via esbuild and all bare specifiers are rewritten to relative
+  paths; the package is fully self-contained. A CI `package-smoke` job now
+  installs the real tarball and runs `pw-doctor --help`, gating release.
+- **AST patcher could corrupt a file:** a replacement selector containing the
+  active quote character (e.g. `[aria-label="Save & Close"]`) was written
+  without escaping, producing an invalid string literal. Quotes and backslashes
+  are now escaped.
+- `--min-confidence 0` is no longer silently swapped for the config default; the
+  validated value is used directly.
+- Report/history writes in `check` are now path-guarded like every other write.
+
+### Added
+- **Dry-run unified diff:** `heal` (without `--apply`) now prints a real
+  unified diff of each proposed change, not just `old → new`.
+- **Fragility in the ranker:** candidate ranking now subtracts a fragility
+  penalty (and buckets `auto_apply`/`suggest`/`skip` on the resulting final
+  score), so a fragile high-confidence CSS selector loses to a robust one.
+  Ties break deterministically (resilience → strategy → selector).
+- **Explainable scoring:** every repair candidate and fragility score now
+  carries a human-readable `reasons[]` breakdown.
+- **Implicit ARIA roles + accessible names:** `attribute_match` now derives the
+  implicit role of native elements (`<button>`, `<a href>`, headings, …) and
+  emits `getByRole('role', { name })`; the AST patcher renders the options
+  object and the DOM hard-gate matches implicit roles + name.
+- **Broader redaction:** added patterns for GitHub/AWS/Google/Slack keys, bearer
+  tokens, cookies, `session`/`csrf` pairs, IPv4, SSN, credit-card and phone
+  numbers; URL query strings stripped everywhere (not just `href`/`src`); all
+  non-safe `<input>` values redacted (not just passwords); inline event-handler
+  attributes stripped by default; the `minimal` preset is auto-upgraded to
+  `moderate` for AI calls.
+- **Column-aware, multi-line AST patching:** patches the exact failing call by
+  line+column, handles multi-line locator chains, leaves template-literal
+  selectors untouched, and refuses (rather than guessing) when two identical
+  selectors share a line.
+- `check --fail-on-fragile <n>` (replaces the inert `--fail-on-broken`): exit 1
+  if any selector's fragility exceeds the threshold.
+- `text_match` screens out generic labels ("OK"/"Submit"/…) and dynamic text
+  (numbers/dates/currency); `isVisible` now respects inline `display:none` /
+  `visibility:hidden`.
+- `engines.node >= 20`, a shipped `LICENSE`, expanded keywords, and source maps
+  stripped from publish builds. `noUnusedLocals`/`noUnusedParameters` enabled.
+- 100+ new tests: a broken-selector regression corpus, CLI-level `heal` e2e,
+  AST edge cases, redaction-category coverage, fragility-penalty deltas, ranker
+  boundaries/tie-breaks, and through-the-pipeline malicious-AI rejection.
+
+### Changed
+- **`--min-confidence` is a 0–100 scale, default 85** (the README previously
+  documented a 0–1 scale, default 0.7 — that value silently malfunctioned).
+  Non-integer values are now rejected with an actionable error.
+- `redact.patterns` config is now an array of RegExp **source strings**
+  (`z.array(z.string())`); the previous `z.instanceof(RegExp)` schema could
+  never be satisfied from JSON/YAML. **(breaking for anyone who set it.)**
+- The default `redact.stripAttributes` is now the full inline event-handler set
+  and a user-supplied list is **merged** with it rather than replacing it.
+- `--dry-run` is now an explicit override that forces preview even with
+  `--apply` (it previously defaulted to `true` and was inert).
+- `assertWithinRoot` canonicalizes paths with `realpath` (resolving symlinks)
+  before the containment check, closing a symlink-escape on writes.
+- Exit codes use the named `EXIT_CODES` everywhere; `credentials check` with no
+  key now exits `2` (tool error) instead of `1`.
+- `report` honors `config.report.format`/`outputDir` as defaults; CI output is
+  routed through the leak-safe logger.
+- README rewritten for accuracy: real example output, sequential-not-parallel
+  strategy wording, honest redaction/`check` claims, GitHub as the canonical
+  URL (dropped `pw-doctor.dev`), and added Quick start / CI / Troubleshooting /
+  clearly-marked Roadmap sections.
+
 ## [0.1.0] — 2026-05-23
 
 First public release after the Codex doc audit and the ship-it sweep.
@@ -96,7 +174,8 @@ Internal pre-release. Not published to npm.
 - Selector extractor (Babel AST walker)
 - Fragility scorer
 
-[Unreleased]: https://github.com/petrkindlmann/pw-doctor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/petrkindlmann/pw-doctor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/petrkindlmann/pw-doctor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/petrkindlmann/pw-doctor/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/petrkindlmann/pw-doctor/releases/tag/v0.0.2
 [0.0.1]: https://github.com/petrkindlmann/pw-doctor/releases/tag/v0.0.1

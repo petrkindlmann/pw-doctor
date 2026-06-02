@@ -153,7 +153,7 @@ All boundary data is Zod-validated. Three matter:
 1. **Collect failures.** `test-runner` parses Playwright JSON output and error strings (no AST cross-reference). Each failure has `{ file, line, selector, method, error }`.
 2. **Load the DOM snapshot.** Reporter wrote it at `.pw-doctor/captures/<hash(file)>-<hash(testTitle)>.html`. Heal matches on the same hashes.
 3. **Redact the DOM** (`dom-redactor`) once. Reused for every strategy.
-4. **Generate candidates in parallel.** All applicable strategies (1..4) run; if an AI adapter is configured and DOM is available, AI runs too. There is **no fallback ladder** — every strategy that can produce a candidate does.
+4. **Generate candidates.** The four heuristic strategies (1..4) run as synchronous calls. A fallback ladder then applies: if any heuristic candidate already clears `autoApplyThreshold`, the AI strategy is skipped; otherwise, when an AI adapter + DOM + consent are present, AI runs and its candidates are validated + DOM-hard-gated before joining the pool.
 5. **AI candidate generation** (when adapter + DOM are present):
    - `consent-gate` is checked at the command layer before adapter init.
    - `prompt-builder` assembles the redacted DOM + failure context.

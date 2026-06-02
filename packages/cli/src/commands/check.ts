@@ -5,26 +5,43 @@ import ora from 'ora';
 import { loadConfig } from '../config/loader.js';
 import { extractSelectors } from '../core/selector-extractor.js';
 import { enrichWithFragility } from '../core/fragility-scorer.js';
-import { formatCheckResults } from '../report/terminal-reporter.js';
+import { formatFragilityResults } from '../report/terminal-reporter.js';
 import { buildJsonReport } from '../report/json-reporter.js';
 import { logger, setCIMode } from '../utils/logger.js';
 import { findTestFiles } from '../utils/file-finder.js';
 import { EXIT_CODES, PW_DOCTOR_DIR } from '@pw-doctor/shared';
-import type { CheckResult, TriggerSource } from '@pw-doctor/shared';
+import type { SelectorInfo, TriggerSource } from '@pw-doctor/shared';
 
 export function checkCommand(): Command {
   return new Command('check')
     .alias('validate')
-    .description('Scan test files and report selector health')
+    .description(
+      'Statically score how fragile each selector in your tests looks (no test run). ' +
+        'Worst-first fragility report — use `heal` to detect and fix actually-broken selectors.',
+    )
     .option('--report <format>', 'Output report format (json|html|markdown)')
     .option('--filter <pattern>', 'Only check tests matching glob pattern')
     .option('--ci', 'CI mode: JSON output, no interactive prompts')
-    .option('--fail-on-broken', 'Exit code 1 if any broken selectors found')
+    .option(
+      '--fail-on-fragile <n>',
+      'Exit code 1 if any selector fragility score exceeds n (0-100)',
+    )
     .action(async (options) => {
       const cwd = process.cwd();
       if (options.ci) setCIMode(true);
 
       const trigger: TriggerSource = options.ci ? 'ci' : 'cli';
+
+      // Validate --fail-on-fragile up front so a bad threshold fails loudly.
+      let fragileThreshold: number | undefined;
+      if (options.failOnFragile !== undefined) {
+        const parsed = Number(options.failOnFragile);
+        if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+          logger.error('--fail-on-fragile must be a number between 0 and 100');
+          process.exit(EXIT_CODES.TOOL_ERROR);
+        }
+        fragileThreshold = parsed;
+      }
 
       // Load config
       let config;
@@ -53,7 +70,7 @@ export function checkCommand(): Command {
       spinner.text = `Extracting selectors from ${testFiles.length} files...`;
 
       // Extract selectors
-      let allSelectors: ReturnType<typeof extractSelectors> = [];
+      let allSelectors: SelectorInfo[] = [];
       for (const file of testFiles) {
         try {
           const selectors = extractSelectors(file);
@@ -65,25 +82,26 @@ export function checkCommand(): Command {
         }
       }
 
-      allSelectors = enrichWithFragility(allSelectors);
-      spinner.succeed(`Found ${allSelectors.length} selectors in ${testFiles.length} files`);
-
-      // For Phase 1: mark all selectors as "unknown" status
-      // (live validation comes in Phase 2 when we hook into test execution)
       const startTime = Date.now();
-      const results: CheckResult[] = allSelectors.map((selector) => ({
-        selector,
-        status: 'unknown' as const,
-      }));
+      allSelectors = enrichWithFragility(allSelectors);
       const checkMs = Date.now() - startTime;
+      spinner.succeed(`Scored ${allSelectors.length} selectors in ${testFiles.length} files`);
 
-      // Display results
+      // Display fragility report (worst-first)
       if (!options.ci) {
-        console.log(formatCheckResults(results));
+        console.log(formatFragilityResults(allSelectors));
       }
 
-      // Build JSON report
-      const report = buildJsonReport(results, trigger, { checkMs });
+      // Build JSON report from the resolved config — no hardcoded ai/threshold.
+      const report = buildJsonReport(
+        allSelectors,
+        trigger,
+        {
+          aiEnabled: config.ai.enabled,
+          autoApplyThreshold: config.repair.autoApplyThreshold,
+        },
+        { checkMs },
+      );
 
       // Write report if requested or in CI mode
       if (options.report === 'json' || options.ci) {
@@ -119,11 +137,23 @@ export function checkCommand(): Command {
         });
       }
 
-      // Exit code
-      const broken = results.filter((r) => r.status === 'broken').length;
-      if (broken > 0 && (options.failOnBroken || options.ci)) {
-        process.exit(EXIT_CODES.BROKEN_FOUND);
+      // --fail-on-fragile: exit 1 if any selector exceeds the threshold.
+      if (fragileThreshold !== undefined) {
+        const exceeded = allSelectors
+          .filter((s) => s.fragilityScore > fragileThreshold!)
+          .sort((a, b) => b.fragilityScore - a.fragilityScore);
+
+        if (exceeded.length > 0) {
+          logger.error(
+            `${exceeded.length} selector(s) exceed fragility threshold ${fragileThreshold}:`,
+          );
+          for (const s of exceeded) {
+            logger.error(`  ${s.fragilityScore}/100  ${s.selectorValue}  (${path.relative(cwd, s.filePath)}:${s.line})`);
+          }
+          process.exit(EXIT_CODES.BROKEN_FOUND);
+        }
       }
+
       process.exit(EXIT_CODES.HEALTHY);
     });
 }

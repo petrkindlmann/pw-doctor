@@ -6,7 +6,7 @@ import { tryTextMatch } from './text-match.js';
 import { tryAttributeMatch } from './attribute-match.js';
 import { tryStructuralMatch } from './structural-match.js';
 import { tryAnchorMatch } from './anchor-match.js';
-import { rankCandidates, selectBestCandidate, type RankedCandidate } from './candidate-ranker.js';
+import { rankCandidates, type RankedCandidate } from './candidate-ranker.js';
 import { validateAiSelector } from '../ai/selector-validator.js';
 import { verifyAgainstDom } from './dom-hard-gate.js';
 
@@ -144,8 +144,10 @@ export async function buildRepairPlan(
     contextCode: options?.contextCode,
     aiShortCircuitThreshold: options?.autoApplyThreshold,
   });
+  // Rank once — rankCandidates records fragility/reasons on each candidate, so
+  // re-ranking would double-append those reason lines. The best is the head.
   const ranked = rankCandidates(candidates, options);
-  const best = selectBestCandidate(candidates, options);
+  const best = ranked.length > 0 ? ranked[0] : null;
 
   return {
     failure,

@@ -20,7 +20,11 @@ const NON_CSS_METHODS = new Set([
 
 /** Escape a value for use inside a CSS attribute selector: [attr="value"] */
 function cssEscapeAttr(value: string): string {
-  return value.replace(/["\\]/g, '\\$&');
+  // Drop control characters (0x00-0x1F, 0x7F) and angle brackets that could
+  // break out of the attribute-selector context, then escape quotes/backslashes.
+  return value
+    .replace(/[\x00-\x1f\x7f<>]/g, '')
+    .replace(/["\\]/g, '\\$&');
 }
 
 /** Escape a value for use as a CSS identifier (id, class name) */

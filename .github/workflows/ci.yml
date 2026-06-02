@@ -63,7 +63,7 @@ jobs:
         run: npm test
 
   # Runs only on main pushes — verifies the CLI tarball builds cleanly
-  # without dev artifacts before any release.
+  # and installs in a clean project before any release.
   package-smoke:
     name: package smoke
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -75,7 +75,17 @@ jobs:
         with: { node-version: '22', cache: 'npm' }
       - run: npm ci
       - run: npm run build
-      - name: Pack CLI
+      - name: Pack and smoke CLI tarball
         run: |
+          set -euo pipefail
+
           cd packages/cli
-          npm pack --dry-run
+          TARBALL_NAME="$(npm pack --json | node -e "const fs = require('node:fs'); const pack = JSON.parse(fs.readFileSync(0, 'utf8')); console.log(pack[0].filename);")"
+          TARBALL_PATH="$(pwd)/$TARBALL_NAME"
+
+          SMOKE_DIR="$(mktemp -d)"
+          cd "$SMOKE_DIR"
+          npm init -y >/dev/null
+          npm install "$TARBALL_PATH"
+          node node_modules/.bin/pw-doctor --help | tee help.txt
+          grep -q "Usage: pw-doctor" help.txt

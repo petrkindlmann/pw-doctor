@@ -21,6 +21,10 @@ coverage/
 
 # Tooling caches
 .playwright-mcp/
+node-compile-cache/
+
+# Packed tarballs (built fresh by the release workflow)
+*.tgz
 
 # Recovered/scratch docs (kept local for reference)
 .archive/

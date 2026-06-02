@@ -4,6 +4,8 @@ import chalk from 'chalk';
 import { watch } from 'chokidar';
 import { Command } from 'commander';
 import { executeHeal } from './heal.js';
+import { addHealOptions } from './heal-options.js';
+import { logger } from '../utils/logger.js';
 
 export function startWatchMode(
   cwd: string,
@@ -31,7 +33,9 @@ export function startWatchMode(
           console.log(chalk.cyan('\nWatching for changes...'));
         })
         .catch((err) => {
-          console.error(chalk.red(`Error processing change: ${err instanceof Error ? err.message : String(err)}`));
+          // Route through the leak-safe logger so sanitizeOutput runs on the
+          // error text before it hits the terminal.
+          logger.error(`Error processing change: ${err instanceof Error ? err.message : String(err)}`);
           console.log(chalk.cyan('\nWatching for changes...'));
         });
     }, 500);
@@ -46,14 +50,8 @@ export function startWatchMode(
  * `watch: true` set.
  */
 export function watchCommand(): Command {
-  return new Command('watch')
-    .description('Continuously heal as test files change (alias for `heal --watch`)')
-    .option('--dry-run', 'Show proposed fixes without applying (default)', true)
-    .option('--apply', 'Apply fixes meeting confidence threshold')
-    .option('--min-confidence <n>', 'Minimum confidence to apply', '85')
-    .option('--max-files <n>', 'Maximum files to process')
-    .option('--ci', 'CI mode: JSON output, no interactive prompts')
-    .option('--no-ai', 'Disable AI repair even if configured')
-    .option('--preview-ai-payload', 'Show AI payload without sending')
+  const cmd = new Command('watch')
+    .description('Continuously heal as test files change (alias for `heal --watch`)');
+  return addHealOptions(cmd)
     .action((options) => executeHeal({ ...options, watch: true }));
 }

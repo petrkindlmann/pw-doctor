@@ -1,5 +1,6 @@
 import type { RepairCandidate } from '@pw-doctor/shared';
 import type { DomAnalyzer, DomElement } from '../core/dom-analyzer.js';
+import { isValidAriaRole, implicitRole, accessibleName } from '../core/aria-roles.js';
 
 interface AttributeMatchInput {
   failedSelector: string;
@@ -63,16 +64,32 @@ function buildCandidate(target: DomElement, analyzer: DomAnalyzer): RepairCandid
     };
   }
 
-  // Check for role attribute
-  if (target.attributes['role']) {
-    const role = target.attributes['role'];
-    const isUnique = analyzer.findByAttribute('role', role).length === 1;
+  // Check for an explicit role attribute, falling back to the element's
+  // implicit ARIA role (e.g. <button> → button). Only emit getByRole for a
+  // role Playwright actually accepts.
+  const explicitRole = target.attributes['role']?.trim().toLowerCase();
+  const role =
+    explicitRole && isValidAriaRole(explicitRole)
+      ? explicitRole
+      : implicitRole(target.tag, target.attributes);
+
+  if (role && isValidAriaRole(role)) {
+    const name = accessibleName(target.attributes, text);
+    // Uniqueness is judged on role + accessible name when we have a name,
+    // otherwise on role alone — using implicit-role-aware matching so a
+    // <button> counts as role "button" even with no explicit role attribute.
+    const isUnique = analyzer.findByRole(role, name).length === 1;
     return {
       selector: role,
       method: 'getByRole',
       confidence: computeAttrConfidence(isUnique, target.isVisible, 'role'),
       strategy: 'attribute_match',
-      reasoning: `Element has role="${role}"`,
+      reasoning: name
+        ? `Element has role "${role}" with accessible name "${name}"`
+        : explicitRole
+          ? `Element has role="${role}"`
+          : `Element <${target.tag}> has implicit role "${role}"`,
+      ...(name ? { nameOption: name } : {}),
       elementMatch: {
         tag: target.tag,
         text,

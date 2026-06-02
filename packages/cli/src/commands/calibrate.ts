@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { generateRepairCandidates } from '../repair/repair-pipeline.js';
 import type { SelectorFailure } from '../core/test-runner.js';
 import { logger, setCIMode } from '../utils/logger.js';
+import { EXIT_CODES } from '@pw-doctor/shared';
 
 export const CalibrationEntrySchema = z.object({
   brokenSelector: z.string().min(1),
@@ -84,8 +85,6 @@ export async function runCalibration(corpus: CalibrationEntry[]): Promise<Calibr
     const bestCandidate = candidates.length > 0
       ? { selector: candidates[0].selector, method: candidates[0].method }
       : null;
-
-    const effectiveMethod = entry.expectedMethod ?? entry.brokenMethod;
 
     // Check if best candidate matches expected fix
     const matched = bestCandidate !== null && selectorMatches(bestCandidate, entry.expectedFix, entry.expectedMethod, entry.brokenMethod);
@@ -198,7 +197,7 @@ export function calibrateCommand(): Command {
         rawContent = fs.readFileSync(options.corpus, 'utf-8');
       } catch {
         logger.error(`Cannot read corpus file: ${options.corpus}`);
-        process.exit(2);
+        process.exit(EXIT_CODES.TOOL_ERROR);
         return;
       }
 
@@ -208,7 +207,7 @@ export function calibrateCommand(): Command {
         rawJson = JSON.parse(rawContent);
       } catch {
         logger.error(`Invalid JSON in corpus file: ${options.corpus}`);
-        process.exit(2);
+        process.exit(EXIT_CODES.TOOL_ERROR);
         return;
       }
 
@@ -217,7 +216,7 @@ export function calibrateCommand(): Command {
       if (!validation.success) {
         const issues = validation.error.issues.map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`).join('\n');
         logger.error(`Corpus validation failed:\n${issues}`);
-        process.exit(2);
+        process.exit(EXIT_CODES.TOOL_ERROR);
         return;
       }
 
@@ -233,6 +232,6 @@ export function calibrateCommand(): Command {
         console.log(formatTerminalOutput(result));
       }
 
-      process.exit(0);
+      process.exit(EXIT_CODES.HEALTHY);
     });
 }

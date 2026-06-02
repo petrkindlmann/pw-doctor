@@ -38,11 +38,40 @@ function parseSelectorHints(selector: string): { tag: string | null; classes: st
 }
 
 /**
- * Try to build a text-based RepairCandidate from a DomElement.
+ * Common generic UI labels that are rarely unique on a page and make poor
+ * getByText anchors (a page may have many "OK"/"Submit"/"Close" controls).
+ */
+const GENERIC_TEXT = new Set([
+  'ok', 'yes', 'no', 'submit', 'cancel', 'close', 'save', 'delete', 'edit',
+  'next', 'previous', 'prev', 'back', 'continue', 'done', 'go', 'search',
+  'login', 'log in', 'logout', 'log out', 'sign in', 'sign up', 'register',
+  'add', 'remove', 'apply', 'reset', 'clear', 'send', 'open', 'menu', 'home',
+  'more', 'less', 'view', 'select', 'confirm', 'accept', 'decline', 'retry',
+]);
+
+/**
+ * Text that is obviously volatile (pure numbers, dates, times, currency,
+ * percentages) — binding a selector to it guarantees future breakage.
+ */
+function isDynamicText(text: string): boolean {
+  return (
+    /^[\d.,]+$/.test(text) ||                       // pure number
+    /^[$€£¥]\s?[\d.,]+$/.test(text) ||              // currency
+    /^\d+(\.\d+)?\s?%$/.test(text) ||               // percentage
+    /^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}$/.test(text) || // date
+    /^\d{1,2}:\d{2}(\s?[ap]m)?$/i.test(text)        // time
+  );
+}
+
+/**
+ * Try to build a text-based RepairCandidate from a DomElement. Screens out
+ * generic and dynamic text, and penalizes single-word/very-short labels so a
+ * text match loses to an attribute match at the ranker when it is risky.
  */
 function tryBuildTextCandidate(target: DomElement, analyzer: DomAnalyzer): RepairCandidate | null {
   const text = target.text.trim();
   if (!text || text.length > 50) return null;
+  if (isDynamicText(text)) return null;
 
   // Check if text content is unique
   const textMatches = analyzer.findByText(text);
@@ -50,12 +79,28 @@ function tryBuildTextCandidate(target: DomElement, analyzer: DomAnalyzer): Repai
 
   // Use getByText if text is unique and short enough
   if (isUnique && text.length <= 30) {
+    const lower = text.toLowerCase();
+    const isGeneric = GENERIC_TEXT.has(lower);
+    const isSingleShortWord = !/\s/.test(text) && text.length < 4;
+    const reasons = [`unique visible text "${text}"`];
+    let confidence = computeTextMatchConfidence(target, isUnique);
+    if (isGeneric) {
+      confidence = Math.max(0, confidence - 20);
+      reasons.push('generic label -20');
+    }
+    if (isSingleShortWord) {
+      confidence = Math.max(0, confidence - 10);
+      reasons.push('very short label -10');
+    }
     return {
       selector: text,
       method: 'getByText',
-      confidence: computeTextMatchConfidence(target, isUnique),
+      confidence,
       strategy: 'text_match',
-      reasoning: `Found unique element with text "${text}"`,
+      reasoning: isGeneric
+        ? `Found unique element with generic text "${text}" (prefer a role/testid if available)`
+        : `Found unique element with text "${text}"`,
+      reasons,
       elementMatch: {
         tag: target.tag,
         text,

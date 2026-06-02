@@ -382,12 +382,16 @@ describe('Interactive Mode Flow', () => {
     expect(output.data).toContain("getByText('Sign In')");
     expect(output.data).toContain("getByTestId('submit-button')");
 
-    // Should display confidence and strategy for each
-    expect(output.data).toContain('100%');
+    // Should display raw confidence, final score, and strategy for each
+    // (format: `[conf 95%, score 100, attribute_match]`).
+    expect(output.data).toContain('conf 95%');
+    expect(output.data).toContain('score 100');
     expect(output.data).toContain('attribute_match');
-    expect(output.data).toContain('77%');
+    expect(output.data).toContain('conf 75%');
+    expect(output.data).toContain('score 77');
     expect(output.data).toContain('text_match');
-    expect(output.data).toContain('65%');
+    expect(output.data).toContain('conf 60%');
+    expect(output.data).toContain('score 65');
     expect(output.data).toContain('ai');
   });
 

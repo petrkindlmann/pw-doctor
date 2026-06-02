@@ -1,20 +1,8 @@
 // packages/cli/src/report/terminal-reporter.ts
 import chalk from 'chalk';
 import Table from 'cli-table3';
-import type { CheckResult } from '@pw-doctor/shared';
-
-function statusColor(status: string): string {
-  switch (status) {
-    case 'healthy':
-      return chalk.green('HEALTHY');
-    case 'broken':
-      return chalk.red('BROKEN');
-    case 'unknown':
-      return chalk.yellow('UNKNOWN');
-    default:
-      return status;
-  }
-}
+import type { SelectorInfo } from '@pw-doctor/shared';
+import { scoreFragility } from '../core/fragility-scorer.js';
 
 function fragilityColor(score: number): string {
   if (score >= 70) return chalk.red(`${score}/100`);
@@ -28,42 +16,51 @@ function shortenPath(filePath: string, line: number): string {
   return `${short}:${line}`;
 }
 
-export function formatCheckResults(results: CheckResult[]): string {
+/**
+ * Render a STATIC FRAGILITY report for the scanned selectors. `check` does not
+ * run tests, so there is no "broken"/"healthy" status to show — only how
+ * fragile each selector looks. Sorted worst-first so the riskiest selectors
+ * are at the top.
+ */
+export function formatFragilityResults(selectors: SelectorInfo[]): string {
+  const sorted = [...selectors].sort((a, b) => b.fragilityScore - a.fragilityScore);
+
   const table = new Table({
-    head: ['File', 'Selector', 'Status', 'Fragility'],
+    head: ['Selector', 'Type', 'Fragility', 'File:Line', 'Top reason'],
     style: { head: ['cyan'] },
-    colWidths: [30, 35, 10, 12],
+    colWidths: [30, 12, 12, 28, 26],
     wordWrap: true,
   });
 
-  for (const r of results) {
+  for (const s of sorted) {
     const selector =
-      r.selector.selectorValue.length > 30
-        ? r.selector.selectorValue.slice(0, 27) + '...'
-        : r.selector.selectorValue;
+      s.selectorValue.length > 28
+        ? s.selectorValue.slice(0, 25) + '...'
+        : s.selectorValue;
+
+    // scoreFragility's first reason after the base is the strongest signal;
+    // fall back to the base label when nothing else contributed.
+    const reasons = scoreFragility(s).reasons;
+    const topReason = reasons.length > 1 ? reasons[1] : (reasons[0] ?? '');
 
     table.push([
-      shortenPath(r.selector.filePath, r.selector.line),
       selector,
-      statusColor(r.status),
-      fragilityColor(r.selector.fragilityScore),
+      s.selectorType,
+      fragilityColor(s.fragilityScore),
+      shortenPath(s.filePath, s.line),
+      topReason,
     ]);
   }
 
-  const total = results.length;
-  const healthy = results.filter((r) => r.status === 'healthy').length;
-  const broken = results.filter((r) => r.status === 'broken').length;
-  const unknown = results.filter((r) => r.status === 'unknown').length;
-  const healthPct =
-    total > 0 ? ((healthy / total) * 100).toFixed(1) : '100.0';
+  const total = sorted.length;
+  const fragile = sorted.filter((s) => s.fragilityScore >= 70).length;
+  const moderate = sorted.filter((s) => s.fragilityScore >= 40 && s.fragilityScore < 70).length;
+  const robust = total - fragile - moderate;
 
-  const summary = [
+  return [
     '',
     table.toString(),
     '',
-    `Summary: ${total} selectors checked, ${broken} broken, ${unknown} unknown, ${healthy} healthy`,
-    `Health: ${healthPct}%`,
+    `Summary: ${total} selectors scanned — ${fragile} fragile (>=70), ${moderate} moderate (40-69), ${robust} robust (<40)`,
   ].join('\n');
-
-  return summary;
 }

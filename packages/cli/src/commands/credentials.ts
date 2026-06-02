@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { EXIT_CODES } from '@pw-doctor/shared';
 
 export function credentialsCommand(): Command {
   const cmd = new Command('credentials')
@@ -21,7 +22,8 @@ export function credentialsCommand(): Command {
           console.log(chalk.yellow('No API keys configured. Set at least one:'));
           console.log(chalk.gray('  export ANTHROPIC_API_KEY=sk-ant-...'));
           console.log(chalk.gray('  export OPENAI_API_KEY=sk-...'));
-          process.exit(1);
+          // A missing key is a config/tool problem, not "broken selectors found".
+          process.exit(EXIT_CODES.TOOL_ERROR);
         }
       }),
   );

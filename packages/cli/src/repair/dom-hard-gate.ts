@@ -3,6 +3,8 @@ import type { DomAnalyzer, DomElement } from '../core/dom-analyzer.js';
 export interface DomGateCandidate {
   selector: string;
   method: string;
+  /** Accessible name for a getByRole candidate (role + name pair). */
+  name?: string;
 }
 
 export interface DomGateOptions {
@@ -181,7 +183,7 @@ function findMatches(candidate: DomGateCandidate, analyzer: DomAnalyzer): DomEle
     case 'getByTestId':
       return analyzer.findByAttribute('data-testid', candidate.selector);
     case 'getByRole':
-      return analyzer.findByAttribute('role', candidate.selector);
+      return analyzer.findByRole(candidate.selector, candidate.name);
     case 'getByText':
       return analyzer.findByText(candidate.selector);
     case 'getByLabel':

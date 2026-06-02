@@ -26,6 +26,28 @@ import { estimateCost } from '../ai/cost-estimator.js';
 import { startWatchMode } from './watch.js';
 import { buildRepairPrompt } from '../ai/prompt-builder.js';
 import { writeRunHistory } from '../utils/run-history.js';
+import { renderUnifiedDiff } from '../utils/diff.js';
+import { addHealOptions } from './heal-options.js';
+import type { RepairCandidate } from '@pw-doctor/shared';
+
+/** Render a candidate as the locator call a user would read, including the
+ *  `{ name }` option for getByRole candidates. */
+export function formatLocatorCall(candidate: RepairCandidate): string {
+  const sel = candidate.selector;
+  if (candidate.method === 'getByRole' && candidate.nameOption) {
+    return `getByRole('${sel}', { name: '${candidate.nameOption.replace(/'/g, "\\'")}' })`;
+  }
+  return `${candidate.method}('${sel}')`;
+}
+
+/** Patch options derived from a candidate (method switch + getByRole name). */
+function patchOptionsFor(failure: { method: string }, candidate: RepairCandidate, column: number) {
+  return {
+    newMethod: candidate.method !== failure.method ? candidate.method : undefined,
+    targetColumn: column,
+    nameOption: candidate.method === 'getByRole' ? candidate.nameOption : undefined,
+  };
+}
 
 export function findCapturedHtml(cwd: string, relativeFile: string, testName: string): string | undefined {
   const absoluteFile = path.resolve(cwd, relativeFile);
@@ -37,6 +59,27 @@ export function findCapturedHtml(cwd: string, relativeFile: string, testName: st
     return undefined;
   }
   return fs.readFileSync(captureFile, 'utf-8');
+}
+
+/**
+ * The `minimal` redaction preset only strips <script>/<style> and does NOT
+ * scrub secrets/PII from text — it is unsafe to send to an AI provider. When
+ * an AI adapter will see the DOM we clamp `minimal` up to `moderate`.
+ */
+export function resolveRedactionPreset(
+  configured: string,
+  aiActive: boolean,
+): 'moderate' | 'strict' | 'minimal' {
+  const preset = (['moderate', 'strict', 'minimal'].includes(configured)
+    ? configured
+    : 'moderate') as 'moderate' | 'strict' | 'minimal';
+  if (aiActive && preset === 'minimal') {
+    logger.warn(
+      "redact.preset 'minimal' is not safe for AI calls (it does not scrub secrets) — using 'moderate' for this run.",
+    );
+    return 'moderate';
+  }
+  return preset;
 }
 
 export function readCodeContext(filePath: string, line: number, contextLines: number = 5): string {
@@ -151,22 +194,39 @@ export async function executeHeal(options: HealOptions): Promise<void> {
         process.exit(EXIT_CODES.TOOL_ERROR);
       }
 
-      // Validate numeric flags
-      const parsedMinConfidence = parseInt(options.minConfidence, 10);
-      if (isNaN(parsedMinConfidence) || parsedMinConfidence < 0 || parsedMinConfidence > 100) {
-        logger.error('--min-confidence must be a number between 0 and 100');
+      // Validate numeric flags. Reject non-integers explicitly rather than
+      // silently truncating (parseInt('0.7') === 0 used to slip through and then
+      // fall back to the config default, silently ignoring the user's value).
+      if (!/^\d+$/.test(options.minConfidence.trim())) {
+        logger.error(
+          `--min-confidence must be an integer between 0 and 100 (got "${options.minConfidence}"). The scale is 0..100, e.g. --min-confidence 85.`,
+        );
         process.exit(EXIT_CODES.TOOL_ERROR);
       }
-      const minConfidence = parsedMinConfidence || config.repair.autoApplyThreshold;
+      const parsedMinConfidence = parseInt(options.minConfidence, 10);
+      if (parsedMinConfidence < 0 || parsedMinConfidence > 100) {
+        logger.error('--min-confidence must be between 0 and 100');
+        process.exit(EXIT_CODES.TOOL_ERROR);
+      }
+      // Use the validated value directly — commander supplies the documented
+      // default ('85') when the flag is absent, so 0 is always an intentional
+      // user choice and must NOT fall back to the config threshold.
+      const minConfidence = parsedMinConfidence;
 
+      let parsedMaxFiles: number | undefined;
       if (options.maxFiles !== undefined) {
-        const parsedMaxFiles = parseInt(options.maxFiles, 10);
-        if (isNaN(parsedMaxFiles) || parsedMaxFiles < 1 || !Number.isInteger(parsedMaxFiles)) {
+        if (!/^\d+$/.test(options.maxFiles.trim()) || parseInt(options.maxFiles, 10) < 1) {
           logger.error('--max-files must be a positive integer');
           process.exit(EXIT_CODES.TOOL_ERROR);
         }
+        parsedMaxFiles = parseInt(options.maxFiles, 10);
       }
-      const shouldApply = options.apply === true;
+      // --dry-run is an explicit override: when present it forces preview even
+      // if --apply was also passed (preview is already the default otherwise).
+      if (options.dryRun === true && options.apply === true) {
+        logger.warn('--dry-run overrides --apply: previewing fixes without writing.');
+      }
+      const shouldApply = options.apply === true && options.dryRun !== true;
       const isInteractive = options.interactive === true;
       const isWatch = options.watch === true;
 
@@ -174,6 +234,14 @@ export async function executeHeal(options: HealOptions): Promise<void> {
       if (isWatch && isInteractive) {
         logger.error('--watch and --interactive cannot be used together');
         process.exit(EXIT_CODES.TOOL_ERROR);
+      }
+
+      // --apply has no effect in watch mode (heal-on-write would re-trigger the
+      // watcher). Tell the user instead of silently ignoring it.
+      if (isWatch && shouldApply) {
+        logger.warn(
+          '--apply is ignored in watch mode (it would re-trigger the watcher). Run a one-shot `pw-doctor heal --apply` to write fixes.',
+        );
       }
 
       // Interactive mode requires a TTY
@@ -197,7 +265,12 @@ export async function executeHeal(options: HealOptions): Promise<void> {
               logger.warn('AI consent declined — AI repair disabled for this run.');
             }
           } else {
-            logger.warn('AI consent not recorded. Run `pw-doctor heal --interactive` first to provide consent.');
+            logger.warn(
+              'AI consent not recorded — AI repair is disabled this run. ' +
+                'Consent is one-time and persists to ~/.pw-doctor/ai-consent.json. ' +
+                'Grant it by running `pw-doctor heal` once in an interactive terminal, ' +
+                'or pass `--no-ai` to silence this and use heuristics only.',
+            );
           }
         }
 
@@ -252,7 +325,8 @@ export async function executeHeal(options: HealOptions): Promise<void> {
           if (!capturedHtml) continue;
 
           const redactedHtml = redactHtml(capturedHtml, {
-            preset: config.redact.preset as 'moderate' | 'strict' | 'minimal',
+            // preview always represents what the AI would receive
+            preset: resolveRedactionPreset(config.redact.preset, true),
             maxDepth: config.redact.maxDepth,
             maxSize: config.redact.maxSize,
             stripAttributes: config.redact.stripAttributes,
@@ -287,7 +361,7 @@ export async function executeHeal(options: HealOptions): Promise<void> {
       // Step 2: For each failure, generate repair plans
       const repairs: RepairRecord[] = [];
       const plans: Array<{ plan: RepairPlan; sourceCode: string }> = [];
-      const maxFiles = options.maxFiles ? parseInt(options.maxFiles, 10) : config.repair.maxFiles;
+      const maxFiles = parsedMaxFiles ?? config.repair.maxFiles;
       let totalAiTokens = 0;
       let totalAiCost = 0;
       let aiCallCount = 0;
@@ -301,11 +375,25 @@ export async function executeHeal(options: HealOptions): Promise<void> {
 
         const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
-        // Find and redact captured HTML
+        // Enforce token and call budgets first — the result decides whether the
+        // DOM will reach an AI provider, which in turn governs redaction strength.
+        let effectiveAiAdapter = aiAdapter;
+        if (effectiveAiAdapter) {
+          if (aiCallCount >= config.ai.maxCallsPerRun) {
+            logger.warn('AI call budget exceeded — disabling AI for remaining failures');
+            effectiveAiAdapter = undefined;
+          } else if (totalAiTokens >= config.ai.tokenBudgetPerRun) {
+            logger.warn('AI token budget exceeded — disabling AI for remaining failures');
+            effectiveAiAdapter = undefined;
+          }
+        }
+
+        // Find and redact captured HTML. Clamp `minimal`→`moderate` when an AI
+        // adapter is active so unscrubbed text never reaches a provider.
         const capturedHtml = findCapturedHtml(cwd, failure.file, failure.testName);
         const redactedHtml = capturedHtml
           ? redactHtml(capturedHtml, {
-              preset: config.redact.preset as 'moderate' | 'strict' | 'minimal',
+              preset: resolveRedactionPreset(config.redact.preset, !!effectiveAiAdapter),
               maxDepth: config.redact.maxDepth,
               maxSize: config.redact.maxSize,
               stripAttributes: config.redact.stripAttributes,
@@ -317,18 +405,6 @@ export async function executeHeal(options: HealOptions): Promise<void> {
 
         // Read code context around the failure line
         const contextCode = readCodeContext(filePath, failure.line);
-
-        // Enforce token and call budgets
-        let effectiveAiAdapter = aiAdapter;
-        if (effectiveAiAdapter) {
-          if (aiCallCount >= config.ai.maxCallsPerRun) {
-            logger.warn('AI call budget exceeded — disabling AI for remaining failures');
-            effectiveAiAdapter = undefined;
-          } else if (totalAiTokens >= config.ai.tokenBudgetPerRun) {
-            logger.warn('AI token budget exceeded — disabling AI for remaining failures');
-            effectiveAiAdapter = undefined;
-          }
-        }
 
         // Build repair plan with captured DOM and AI
         const planStart = performance.now();
@@ -404,7 +480,7 @@ export async function executeHeal(options: HealOptions): Promise<void> {
         console.log(chalk.bold(`Proposed fixes (${fixableCount}/${failures.length}):`));
         console.log('');
 
-        for (const { plan } of plans) {
+        for (const { plan, sourceCode } of plans) {
           if (!plan.bestCandidate) {
             console.log(chalk.red(`  ✖ ${plan.failure.file}:${plan.failure.line}`));
             console.log(chalk.gray(`    ${plan.failure.selector} → no fix found`));
@@ -412,20 +488,48 @@ export async function executeHeal(options: HealOptions): Promise<void> {
           }
 
           const bc = plan.bestCandidate;
+          const cand = bc.candidate;
           const confidenceColor =
-            bc.candidate.confidence >= 85
+            cand.confidence >= 85
               ? chalk.green
-              : bc.candidate.confidence >= 50
+              : cand.confidence >= 50
                 ? chalk.yellow
                 : chalk.red;
           console.log(chalk.cyan(`  ${plan.failure.file}:${plan.failure.line}`));
           console.log(
-            `    ${chalk.red(plan.failure.selector)} → ${chalk.green(`${bc.candidate.method}('${bc.candidate.selector}')`)}`,
+            `    ${chalk.red(plan.failure.selector)} → ${chalk.green(formatLocatorCall(cand))}`,
           );
+          const fragNote = cand.fragility !== undefined ? ` | Fragility: ${cand.fragility}` : '';
           console.log(
-            `    Confidence: ${confidenceColor(`${bc.candidate.confidence}%`)} | Strategy: ${bc.candidate.strategy}`,
+            `    Confidence: ${confidenceColor(`${cand.confidence}%`)} | Score: ${bc.finalScore} | Strategy: ${cand.strategy}${fragNote}`,
           );
-          console.log(`    ${chalk.gray(bc.candidate.reasoning)}`);
+          // Structured breakdown when available, else the headline reasoning.
+          if (cand.reasons && cand.reasons.length) {
+            console.log(chalk.gray(`    ${cand.reasons.join(' · ')}`));
+          } else {
+            console.log(chalk.gray(`    ${cand.reasoning}`));
+          }
+
+          // Dry-run unified diff so the user sees the exact change. Only in
+          // dry-run (apply mode prints its own verified/rolled-back summary).
+          if (!shouldApply) {
+            const patch = patchSelector(
+              sourceCode,
+              plan.failure.line,
+              plan.failure.selector,
+              cand.selector,
+              patchOptionsFor(plan.failure, cand, plan.failure.column),
+            );
+            if (patch.patched) {
+              const diff = renderUnifiedDiff(sourceCode, patch.patchedCode, {
+                filePath: plan.failure.file,
+                context: 1,
+              });
+              console.log(diff.split('\n').map((l) => `    ${l}`).join('\n'));
+            } else if (patch.ambiguous) {
+              console.log(chalk.yellow('    (multiple identical selectors on this line — cannot patch automatically)'));
+            }
+          }
           console.log('');
         }
       }
@@ -463,13 +567,15 @@ export async function executeHeal(options: HealOptions): Promise<void> {
           // Determine selector and method to apply
           let newSelector: string;
           let newMethod: string | undefined;
+          let nameOption: string | undefined;
 
           if (choice.action === 'apply') {
-            newSelector = choice.candidate.candidate.selector;
-            const candidateMethod = choice.candidate.candidate.method;
-            newMethod = candidateMethod !== plan.failure.method ? candidateMethod : undefined;
+            const c = choice.candidate.candidate;
+            newSelector = c.selector;
+            newMethod = c.method !== plan.failure.method ? c.method : undefined;
+            nameOption = c.method === 'getByRole' ? c.nameOption : undefined;
           } else {
-            // edit
+            // edit — user-supplied selector/method, no derived name option
             newSelector = choice.selector;
             newMethod = choice.method !== plan.failure.method ? choice.method : undefined;
           }
@@ -487,7 +593,7 @@ export async function executeHeal(options: HealOptions): Promise<void> {
             plan.failure.line,
             plan.failure.selector,
             newSelector,
-            newMethod,
+            { newMethod, targetColumn: plan.failure.column, nameOption },
           );
 
           if (!patchResult.patched) {
@@ -542,9 +648,12 @@ export async function executeHeal(options: HealOptions): Promise<void> {
 
       for (const { plan, sourceCode } of plans) {
         if (!plan.bestCandidate) continue;
-        if (plan.bestCandidate.candidate.confidence < minConfidence) {
+        // Gate on the FINAL score (confidence + method resilience − fragility),
+        // the same number the ranker buckets on, so a fragile high-confidence
+        // selector does not auto-apply against the user's threshold.
+        if (plan.bestCandidate.finalScore < minConfidence) {
           logger.warn(
-            `Skipping ${plan.failure.file}:${plan.failure.line} — confidence ${plan.bestCandidate.candidate.confidence}% below threshold ${minConfidence}%`,
+            `Skipping ${plan.failure.file}:${plan.failure.line} — score ${plan.bestCandidate.finalScore} below threshold ${minConfidence}`,
           );
           continue;
         }
@@ -565,11 +674,15 @@ export async function executeHeal(options: HealOptions): Promise<void> {
           plan.failure.line,
           plan.failure.selector,
           bc.selector,
-          bc.method !== plan.failure.method ? bc.method : undefined,
+          patchOptionsFor(plan.failure, bc, plan.failure.column),
         );
 
         if (!patchResult.patched) {
-          logger.warn(`Could not patch ${plan.failure.file}:${plan.failure.line}`);
+          logger.warn(
+            patchResult.ambiguous
+              ? `Skipped ${plan.failure.file}:${plan.failure.line} — multiple identical selectors on the line, cannot disambiguate`
+              : `Could not patch ${plan.failure.file}:${plan.failure.line}`,
+          );
           continue;
         }
 
@@ -762,16 +875,11 @@ export async function executeHeal(options: HealOptions): Promise<void> {
 }
 
 export function healCommand(): Command {
-  return new Command('heal')
+  // Shared heal/watch options come from addHealOptions (single source of truth);
+  // the heal-only flags are appended here.
+  return addHealOptions(new Command('heal'))
     .description('Detect broken selectors and propose fixes')
-    .option('--dry-run', 'Show proposed fixes without applying (default)', true)
-    .option('--apply', 'Apply fixes meeting confidence threshold')
-    .option('--min-confidence <n>', 'Minimum confidence to apply', '85')
-    .option('--max-files <n>', 'Maximum files to process')
-    .option('--ci', 'CI mode: JSON output, no interactive prompts')
     .option('--interactive', 'Interactively approve/edit/skip each fix')
-    .option('--no-ai', 'Disable AI repair even if configured')
     .option('--watch', 'Watch test files for changes and re-run heal')
-    .option('--preview-ai-payload', 'Show AI payload without sending')
     .action(executeHeal);
 }

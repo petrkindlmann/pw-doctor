@@ -1,6 +1,9 @@
 import readline from 'node:readline';
 import chalk from 'chalk';
+import { PLAYWRIGHT_LOCATOR_METHODS } from '@pw-doctor/shared';
 import type { RankedCandidate } from '../repair/candidate-ranker.js';
+
+const KNOWN_METHODS = new Set<string>(PLAYWRIGHT_LOCATOR_METHODS);
 
 export type InteractiveChoice =
   | { action: 'apply'; candidate: RankedCandidate }
@@ -31,14 +34,21 @@ function askQuestion(rl: readline.Interface, question: string): Promise<string> 
 
 function formatCandidate(index: number, ranked: RankedCandidate): string {
   const c = ranked.candidate;
-  const pct = Math.round(ranked.finalScore);
-  return `    ${index}. ${c.method}('${c.selector}')  [${pct}% confidence, ${c.strategy}]`;
+  const call =
+    c.method === 'getByRole' && c.nameOption
+      ? `getByRole('${c.selector}', { name: '${c.nameOption.replace(/'/g, "\\'")}' })`
+      : `${c.method}('${c.selector}')`;
+  return `    ${index}. ${call}  [conf ${c.confidence}%, score ${ranked.finalScore}, ${c.strategy}]`;
 }
 
 export function assertTTY(input: NodeJS.ReadableStream = process.stdin): void {
   const stream = input as NodeJS.ReadStream;
   if (!stream.isTTY) {
-    throw new Error('Interactive mode requires a TTY — stdin is not a terminal.');
+    throw new Error(
+      'Interactive mode requires a TTY — stdin is not a terminal. ' +
+        'In a non-interactive/CI environment, run without --interactive ' +
+        '(use --ci for JSON output, or --apply to write fixes directly).',
+    );
   }
 }
 
@@ -87,7 +97,18 @@ export async function promptForCandidate(
       }
 
       if (answer.toLowerCase() === 'e') {
-        const method = await askQuestion(rl, '  Enter method (getByRole/getByTestId/locator/etc): ');
+        let method = '';
+        // Re-prompt until the method is a real Playwright locator method, so an
+        // edit can never write an unrunnable call.
+        while (true) {
+          method = await askQuestion(rl, '  Enter method (getByRole/getByTestId/locator/etc): ');
+          if (KNOWN_METHODS.has(method)) break;
+          write(
+            chalk.red(
+              `  Unknown method "${method}". Valid: ${[...KNOWN_METHODS].join(', ')}.`,
+            ),
+          );
+        }
         const selector = await askQuestion(rl, '  Enter selector: ');
         return { action: 'edit', selector, method };
       }

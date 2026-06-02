@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import type { AnyNode } from 'domhandler';
+import { implicitRole as implicitRoleOf } from './aria-roles.js';
 
 export interface DomElement {
   tag: string;
@@ -38,6 +39,35 @@ export class DomAnalyzer {
       return this.$(el).attr(attr) === value;
     }).each((_, el) => {
       results.push(this.toElement(this.$(el)));
+    });
+    return results;
+  }
+
+  /**
+   * Match by ARIA role — explicit `role=` attribute OR the element's implicit
+   * role (e.g. <button>, <a href>, headings). When `name` is given, also filter
+   * by accessible name (aria-label or trimmed visible text), mirroring
+   * Playwright's getByRole(role, { name }).
+   */
+  findByRole(role: string, name?: string): DomElement[] {
+    const results: DomElement[] = [];
+    this.$('*').each((_, el) => {
+      const $el = this.$(el);
+      const domEl = this.toElement($el);
+      const explicit = domEl.attributes['role']?.trim().toLowerCase();
+      const implicit = implicitRoleOf(domEl.tag, domEl.attributes);
+      if (explicit !== role && implicit !== role) return;
+      if (name !== undefined) {
+        const accName = (
+          domEl.attributes['aria-label'] ??
+          domEl.text ??
+          domEl.attributes['alt'] ??
+          domEl.attributes['title'] ??
+          ''
+        ).trim();
+        if (accName !== name.trim()) return;
+      }
+      results.push(domEl);
     });
     return results;
   }
@@ -101,10 +131,17 @@ export class DomAnalyzer {
       isUnique = false;
     }
 
-    // Approximate visibility
-    const isVisible = !attributes['hidden'] &&
+    // Approximate visibility from the static snapshot. We cannot run layout, so
+    // this catches the explicit hide signals: hidden attr, type=hidden,
+    // aria-hidden, and inline display:none / visibility:hidden styles.
+    const style = (attributes['style'] ?? '').toLowerCase().replace(/\s+/g, '');
+    const styleHides =
+      style.includes('display:none') || style.includes('visibility:hidden');
+    const isVisible =
+      !attributes['hidden'] &&
       attributes['type'] !== 'hidden' &&
-      !attributes['aria-hidden'];
+      attributes['aria-hidden'] !== 'true' &&
+      !styleHides;
 
     return {
       tag,

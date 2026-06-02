@@ -27,6 +27,8 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          PWDOCTOR_PUBLISH_BUILD: '1'
 
       - name: Typecheck
         run: npm run typecheck
@@ -36,6 +38,26 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Prepare publish build
+        run: npm run build
+        env:
+          PWDOCTOR_PUBLISH_BUILD: '1'
+
+      - name: Pack and smoke CLI tarball
+        run: |
+          set -euo pipefail
+
+          cd packages/cli
+          TARBALL_NAME="$(npm pack --json | node -e "const fs = require('node:fs'); const pack = JSON.parse(fs.readFileSync(0, 'utf8')); console.log(pack[0].filename);")"
+          TARBALL_PATH="$(pwd)/$TARBALL_NAME"
+
+          SMOKE_DIR="$(mktemp -d)"
+          cd "$SMOKE_DIR"
+          npm init -y >/dev/null
+          npm install "$TARBALL_PATH"
+          node node_modules/.bin/pw-doctor --help | tee help.txt
+          grep -q "Usage: pw-doctor" help.txt
 
       - name: Publish
         working-directory: packages/cli

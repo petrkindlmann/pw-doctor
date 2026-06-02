@@ -436,4 +436,50 @@ describe('reportCommand', () => {
     await cmd.parseAsync(['--format', 'html'], { from: 'user' });
     expect(fs.existsSync(path.join(tmpDir, '.pw-doctor', 'reports', 'report.html'))).toBe(true);
   });
+
+  it('uses config.report.format as default when --format is absent', async () => {
+    // Config sets format: markdown — no --format flag passed.
+    fs.writeFileSync(
+      path.join(tmpDir, '.pw-doctor.config.json'),
+      JSON.stringify({ report: { format: 'markdown' } }),
+    );
+    const historyDir = path.join(tmpDir, '.pw-doctor', 'history', 'runs');
+    writeRunFile(historyDir, '2025-01-01.json', makeRunHistory());
+
+    const cmd = reportCommand();
+    await cmd.parseAsync([], { from: 'user' });
+
+    const mdPath = path.join(tmpDir, '.pw-doctor', 'reports', 'report.md');
+    expect(fs.existsSync(mdPath)).toBe(true);
+    const content = fs.readFileSync(mdPath, 'utf-8');
+    expect(content).toContain('## Health Summary');
+  });
+
+  it('uses config.report.outputDir as default output directory', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.pw-doctor.config.json'),
+      JSON.stringify({ report: { format: 'json', outputDir: 'custom-reports' } }),
+    );
+    const historyDir = path.join(tmpDir, '.pw-doctor', 'history', 'runs');
+    writeRunFile(historyDir, '2025-01-01.json', makeRunHistory());
+
+    const cmd = reportCommand();
+    await cmd.parseAsync([], { from: 'user' });
+
+    expect(fs.existsSync(path.join(tmpDir, 'custom-reports', 'report.json'))).toBe(true);
+  });
+
+  it('--format flag overrides config.report.format', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.pw-doctor.config.json'),
+      JSON.stringify({ report: { format: 'markdown' } }),
+    );
+    const historyDir = path.join(tmpDir, '.pw-doctor', 'history', 'runs');
+    writeRunFile(historyDir, '2025-01-01.json', makeRunHistory());
+
+    const cmd = reportCommand();
+    await cmd.parseAsync(['--format', 'html'], { from: 'user' });
+
+    expect(fs.existsSync(path.join(tmpDir, '.pw-doctor', 'reports', 'report.html'))).toBe(true);
+  });
 });

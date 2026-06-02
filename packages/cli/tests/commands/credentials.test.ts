@@ -53,14 +53,15 @@ describe('credentials check command', () => {
     expect(output).toContain('Not set');
   });
 
-  it('exits with code 1 when no keys are configured', async () => {
+  it('exits with TOOL_ERROR (2) when no keys are configured', async () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
 
     const cmd = credentialsCommand();
     await cmd.parseAsync(['check'], { from: 'user' });
 
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    // A missing key is a config/tool problem, not "broken selectors found".
+    expect(exitSpy).toHaveBeenCalledWith(2);
   });
 
   it('exits with code 0 when at least one key is set', async () => {
