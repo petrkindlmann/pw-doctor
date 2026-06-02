@@ -68,6 +68,7 @@ export async function safeExec(
       (error, stdout, stderr) => {
         if (settled) return;
         settled = true;
+        cleanup(child);
         resolve({
           stdout: stdout ?? '',
           stderr: stderr ?? '',
@@ -76,9 +77,15 @@ export async function safeExec(
       },
     );
 
+    // Don't let the child's handles keep the parent's event loop alive. On some
+    // Linux runners a finished child's stdio pipes linger long enough to stall
+    // process exit (which hung CI); unref + explicit stdio teardown prevents it.
+    child.unref();
+
     child.on('error', (err) => {
       if (settled) return;
       settled = true;
+      cleanup(child);
       resolve({
         stdout: '',
         stderr: err.message,
@@ -86,4 +93,15 @@ export async function safeExec(
       });
     });
   });
+}
+
+/** Destroy a finished child's stdio streams so no handle keeps the loop alive. */
+function cleanup(child: ReturnType<typeof execFile>): void {
+  try {
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    child.stdin?.destroy();
+  } catch {
+    // best-effort
+  }
 }

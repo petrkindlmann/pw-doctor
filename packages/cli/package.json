@@ -33,7 +33,7 @@
   "scripts": {
     "build": "tsc && node scripts/bundle-shared.mjs",
     "test": "node scripts/run-tests.mjs",
-    "test:e2e": "RUN_E2E=1 node scripts/run-tests.mjs tests/reporter/pw-doctor-fixture.test.ts tests/e2e/heal-cli.test.ts tests/e2e/check.test.ts",
+    "test:e2e": "RUN_E2E=1 node scripts/run-tests.mjs tests/reporter/pw-doctor-fixture.test.ts tests/e2e/heal-cli.test.ts tests/e2e/check.test.ts tests/utils/safe-exec.test.ts",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit"

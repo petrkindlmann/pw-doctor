@@ -4,10 +4,11 @@ const heavyFiles = [
   // Imports the real @playwright/test runtime, which registers global state that
   // can keep a worker alive — isolated into the `test:e2e` run.
   'tests/reporter/pw-doctor-fixture.test.ts',
-  // Spawn the built CLI binary via execFileSync — isolated so a child-process
-  // quirk on a CI runner cannot stall the core suite.
+  // Spawn child processes (execFileSync / real safeExec) — isolated so a
+  // lingering child-process handle on a CI runner cannot stall the core suite.
   'tests/e2e/heal-cli.test.ts',
   'tests/e2e/check.test.ts',
+  'tests/utils/safe-exec.test.ts',
 ];
 
 export default defineConfig({
