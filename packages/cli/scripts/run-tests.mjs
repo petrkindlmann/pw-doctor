@@ -1,38 +1,49 @@
-// Run vitest and force a clean process exit once results are in.
+// Run vitest and force a clean process exit the moment all tests finish.
 //
-// Why: on constrained Linux CI runners every test passes but the vitest process
-// does not exit — a child process spawned by the safe-exec / test-runner suites
-// (real `execFile`) leaves a referenced stdio handle that keeps the event loop
-// alive. `vitest.close()` waits for that teardown and never returns, so even an
-// API runner that awaited close() hung. Here we read the real failed-test count
-// as soon as the run finishes and hard-exit, never awaiting teardown. A
-// watchdog guarantees exit even if `startVitest` itself never resolves.
+// Why: on constrained Linux CI runners every test passes, but a lingering
+// child-process stdio handle (from the real-`execFile` suites) keeps the event
+// loop alive — and crucially, `await startVitest(...)` and `vitest.close()`
+// never resolve there, so any code *after* them never runs. The reliable hook
+// is vitest's `onFinished` reporter callback, which fires as soon as the run
+// completes (before the hang). We read the authoritative result there and
+// hard-exit. A watchdog is a last-resort backstop only.
 import { startVitest } from 'vitest/node';
 
 const cliFilters = process.argv.slice(2);
 
-// Hard watchdog: if anything below wedges, exit non-zero rather than hang the
-// CI step to its timeout. Generous so a slow-but-real run still completes.
-const watchdog = setTimeout(() => {
-  console.error('\nrun-tests watchdog: forcing exit (vitest did not settle).');
-  process.exit(1);
-}, 5 * 60 * 1000);
-watchdog.unref();
-
-let failed = 1;
-try {
-  const vitest = await startVitest('test', cliFilters, { watch: false, run: true });
-  if (vitest) {
-    failed = vitest.state.getCountOfFailedTests();
-    // Do NOT await close() — on CI it blocks on a lingering child-process
-    // handle. Fire-and-forget; we already have the authoritative result.
-    void Promise.resolve(vitest.close()).catch(() => {});
-  }
-} catch (err) {
-  console.error('run-tests: vitest failed to start:', err);
-  failed = 1;
+function finish(failedCount) {
+  if (failedCount > 0) console.error(`\n${failedCount} test(s) failed.`);
+  else console.log('\nAll tests passed — exiting.');
+  process.exit(failedCount > 0 ? 1 : 0);
 }
 
-if (failed > 0) console.error(`\n${failed} test(s) failed.`);
-// Hard exit with the real code; bypasses any lingering open handle.
-process.exit(failed > 0 ? 1 : 0);
+// Backstop: if onFinished never fires, fail rather than hang to the step limit.
+const watchdog = setTimeout(() => {
+  console.error('\nrun-tests watchdog: onFinished never fired — forcing exit 1.');
+  process.exit(1);
+}, 6 * 60 * 1000);
+watchdog.unref();
+
+await startVitest('test', cliFilters, { watch: false, run: true }, undefined, {
+  reporters: [
+    'default',
+    {
+      // Fires when the whole run completes, before any teardown hang.
+      onFinished(files = [], errors = []) {
+        const failed =
+          (errors?.length ?? 0) +
+          files.filter((f) => f.result?.state === 'fail').length +
+          // count individual failed tests too, in case a file is marked pass
+          files.reduce((n, f) => n + countFailed(f), 0);
+        finish(failed);
+      },
+    },
+  ],
+});
+
+function countFailed(task) {
+  if (!task) return 0;
+  if (task.type === 'test') return task.result?.state === 'fail' ? 1 : 0;
+  const children = task.tasks ?? [];
+  return children.reduce((n, t) => n + countFailed(t), 0);
+}
