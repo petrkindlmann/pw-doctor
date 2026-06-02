@@ -45,6 +45,9 @@ test('demo', async ({ page }) => {
       cwd: tmpDir,
       encoding: 'utf-8',
       env: { ...process.env },
+      input: '',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 25000,
     });
 
     expect(result).toContain('Found Playwright config');
@@ -61,6 +64,9 @@ test('demo', async ({ page }) => {
       cwd: tmpDir,
       encoding: 'utf-8',
       env: { ...process.env },
+      input: '',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 25000,
     });
 
     // Then check
@@ -68,6 +74,9 @@ test('demo', async ({ page }) => {
       cwd: tmpDir,
       encoding: 'utf-8',
       env: { ...process.env },
+      input: '',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 25000,
     });
 
     expect(result).toContain('3 selectors');
@@ -79,6 +88,9 @@ test('demo', async ({ page }) => {
       cwd: tmpDir,
       encoding: 'utf-8',
       env: { ...process.env },
+      input: '',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 25000,
     });
 
     const result = execFileSync(
@@ -88,6 +100,9 @@ test('demo', async ({ page }) => {
         cwd: tmpDir,
         encoding: 'utf-8',
         env: { ...process.env },
+        input: '',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 25000,
       },
     );
 

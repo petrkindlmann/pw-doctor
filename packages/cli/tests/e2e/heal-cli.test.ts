@@ -24,6 +24,11 @@ describe('pw-doctor heal (CLI e2e)', { timeout: 30000 }, () => {
         cwd: opts.cwd ?? tmpDir,
         encoding: 'utf-8',
         env: { ...process.env },
+        // Give the child an empty, closed stdin so no prompt path can ever
+        // block (CI is non-TTY); cap wall time as a backstop against a hang.
+        input: '',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 25000,
       });
       return { stdout, status: 0 };
     } catch (err) {
