@@ -4,7 +4,16 @@
     "outDir": "dist",
     "rootDir": "src",
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    // Resolve @pw-doctor/shared directly to the shared package's source so tsc
+    // works on a clean checkout regardless of whether npm linked the workspace
+    // symlink into node_modules. The bare specifier is bundled into dist at
+    // build time (scripts/bundle-shared.mjs), so this only affects type/build
+    // resolution, not the published runtime.
+    "baseUrl": ".",
+    "paths": {
+      "@pw-doctor/shared": ["../shared/src/index.ts"]
+    }
   },
   "include": ["src"],
   "references": [
