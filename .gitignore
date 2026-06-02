@@ -31,3 +31,6 @@ node-compile-cache/
 
 # Screenshots, scratch artifacts
 *.png
+
+# vitest JSON result file (CI test runner)
+vitest-results.json
